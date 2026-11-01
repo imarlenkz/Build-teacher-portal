@@ -98,6 +98,8 @@ model School {
   shortName String   @map("short_name")
   address   String?
   city      String?
+  /// iMARLEN ID-дағы мектеп коды (school.code, мыс. "s51") — SSO пайдаланушыларын мектепке байлау үшін.
+  idpCode   String?  @unique @map("idp_code")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -128,6 +130,8 @@ model User {
   schoolId       Int?       @map("school_id")
   roleId         Int        @map("role_id")
   login          String     @unique
+  /// iMARLEN ID (OIDC) тұрақты идентификаторы — sub. SSO арқылы кірген пайдаланушыда болады.
+  idpSub         String?    @unique @map("idp_sub")
   passwordHash   String     @map("password_hash")
   fullName       String     @map("full_name")
   title          String?
