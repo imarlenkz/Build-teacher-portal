@@ -99,6 +99,8 @@ model School {
   address   String?
   city      String?
   isActive  Boolean  @default(true) @map("is_active")
+  /// Nexus (сабақ кестесі жүйесі) мекемесінің id-і — кесте мен мұғалімдерді импорттау үшін.
+  nexusInstitutionId String? @map("nexus_institution_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
