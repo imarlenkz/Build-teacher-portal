@@ -33,7 +33,7 @@ const TIMES = ['08:30', '09:25', '10:30', '11:25', '12:20', '13:15', '14:10', '1
 const KEYS: Record<string, AttendanceStatus> = { '1': 'P', '2': 'N', '3': 'S', '4': 'A', '5': 'K', '6': 'O' };
 
 export default function Attendance() {
-  const { ref } = useReference();
+  const { ref, subjectsOf } = useReference();
   const [s, set] = useUrlState({ view: 'mark', classId: 0, subjectId: 0, date: '', period: 0, month: '' });
   const lessons = useLessons();
 
@@ -44,7 +44,7 @@ export default function Attendance() {
     if (l) set({ classId: l.classId, subjectId: l.subjectId, date: lessons.data.date, period: l.period });
     else if (ref.classes[0]) {
       const c = ref.classes[0];
-      set({ classId: c.id, subjectId: ref.subjectsOf(c.id)[0]?.id ?? 0, date: ref.today, period: 1 });
+      set({ classId: c.id, subjectId: subjectsOf(c.id)[0]?.id ?? 0, date: ref.today, period: 1 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessons.data]);
