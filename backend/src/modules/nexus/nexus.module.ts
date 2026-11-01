@@ -1,15 +1,17 @@
 import { BadGatewayException, BadRequestException, Body, Controller, Get, Injectable, Logger, Module, Post, Put, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { IsString, MaxLength, MinLength } from 'class-validator';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { CurrentUser, ReqMeta, RequirePermissions } from '../../common/decorators';
 import { P } from '../../common/permissions';
 import type { AuthUser, RequestMeta } from '../../common/auth-user';
-import { addDays, fmtDate, todayStr } from '../../common/utils/dates';
+import type { SystemActor } from '../audit/audit.service';
+import { addDays, APP_TZ, fmtDate, todayStr } from '../../common/utils/dates';
 import { AuditService } from '../audit/audit.service';
 import { ScopeService } from '../core/scope.service';
 import { ARGON_OPTS } from '../auth/auth.service';
@@ -18,6 +20,14 @@ import { buildPlan, NexusLesson, Plan } from './nexus.plan';
 class InstitutionInput {
   @IsString() @MinLength(1) @MaxLength(64) institutionId: string;
 }
+
+/** Автосинхрондау уақыты (әдепкі: күн сайын 03:30, APP_TZ). NEXUS_AUTO_SYNC=false болса өшеді. */
+const AUTO_SYNC_CRON = process.env.NEXUS_SYNC_CRON || '0 30 3 * * *';
+const autoSyncEnabled = () => process.env.NEXUS_AUTO_SYNC !== 'false';
+const lastSyncKey = (schoolId: number) => `nexus:autosync:${schoolId}`;
+
+/** Кесте жасалатын «кім»: адам (AuthUser) немесе жүйе (түнгі автосинхрондау). */
+type Actor = AuthUser | SystemActor;
 
 /** Nexus API терезесі: бір сұраныста 62 күннен аспайды; апталық кесте үшін 3 апта жеткілікті. */
 const WINDOW_DAYS = 20;
@@ -61,7 +71,7 @@ export class NexusService {
 
   async status(user: AuthUser) {
     const school = await this.prisma.school.findUniqueOrThrow({ where: { id: user.schoolId } });
-    const base = { configured: !!this.key, apiUrl: this.apiUrl, institutionId: school.nexusInstitutionId };
+    const base = { configured: !!this.key, apiUrl: this.apiUrl, institutionId: school.nexusInstitutionId, autoSync: { enabled: autoSyncEnabled(), last: await this.lastSync(user.schoolId) } };
     if (!this.key) return { ...base, institutions: [], error: 'Серверде NEXUS_INTEGRATION_KEY орнатылмаған' };
     try {
       return { ...base, institutions: await this.call<{ id: string; name: string }[]>('/integration/institutions'), error: null };
@@ -80,7 +90,7 @@ export class NexusService {
   }
 
   /** Ағымдағы жылдың күндері бойынша сабақтар: алдымен бүгіннен бастап, бос болса — ағымдағы тоқсан басынан. */
-  private async lessons(user: AuthUser) {
+  private async lessons(user: Actor) {
     const school = await this.prisma.school.findUniqueOrThrow({ where: { id: user.schoolId } });
     if (!school.nexusInstitutionId) throw new BadRequestException('Алдымен Nexus мекемесін таңдаңыз');
     const year = await this.scope.currentYear(user.schoolId);
@@ -94,7 +104,7 @@ export class NexusService {
     throw new BadRequestException('Nexus-те жарияланған сабақ кестесі табылмады');
   }
 
-  private async plan(user: AuthUser) {
+  private async plan(user: Actor) {
     const year = await this.scope.currentYear(user.schoolId);
     const { rows, from, to } = await this.lessons(user);
     const [teachers, classes, subjects] = await Promise.all([
@@ -125,8 +135,15 @@ export class NexusService {
   }
 
   /** Импорт: мұғалімдер, пәндер, сыныптар, пән мұғалімдері, пән топтары және апталық кесте (ағымдағы жыл кестесі толық ауыстырылады). */
-  async import(user: AuthUser, meta: RequestMeta) {
+  async import(user: Actor, meta: RequestMeta) {
     const { plan, year, from, to, lessons } = await this.plan(user);
+    const r = await this.apply(user, meta, plan, year, from, to, lessons);
+    // Қолмен импорттан кейін түнгі синхрондау сол кестені қайта жазбауы үшін хэш сақталады.
+    await this.saveSync(user.schoolId, { ok: true, result: `Қолмен импорт: ${r.slots} сабақ орны`, hash: this.planHash(plan) });
+    return r;
+  }
+
+  private async apply(user: Actor, meta: RequestMeta, plan: Plan, year: Awaited<ReturnType<ScopeService['currentYear']>>, from: string, to: string, lessons: number) {
     const teacherRole = await this.prisma.role.findUniqueOrThrow({ where: { code: 'TEACHER' } });
     // Жаңа мұғалімдерге кездейсоқ құпиясөз: олар iMARLEN ID арқылы кіреді немесе әкімші құпиясөз береді.
     const newTeachers = await Promise.all(
@@ -227,6 +244,88 @@ export class NexusService {
     );
     await this.cache.bump(user.schoolId);
     return result;
+  }
+
+  /** Жоспардың мазмұн хэші: түнде Nexus-те ештеңе өзгермесе, импорт пен аудит жазбасы өткізіліп жіберіледі. */
+  private planHash(p: Plan) {
+    const sorted = <T>(xs: T[]) => xs.map((x) => JSON.stringify(x)).sort();
+    const data = {
+      teachers: sorted(p.teachers.map((t) => [t.email, t.fullName])),
+      classes: sorted(p.classes.map((c) => c.key)),
+      subjects: sorted(p.subjects.map((x) => x.name)),
+      assignments: sorted(p.assignments),
+      groups: sorted(p.groups),
+      slots: sorted(p.slots.map((x) => [x.classKey, x.subject, x.subgroup, x.teacherEmail, x.weekday, x.period, x.startTime, x.endTime])),
+    };
+    return createHash('sha256').update(JSON.stringify(data)).digest('hex');
+  }
+
+  private async lastSync(schoolId: number): Promise<{ at: string; result: string; ok: boolean } | null> {
+    if (!this.cache.isHealthy) return null;
+    try {
+      const raw = await this.cache.redis.get(lastSyncKey(schoolId));
+      if (!raw) return null;
+      const { at, result, ok } = JSON.parse(raw) as { at: string; result: string; ok: boolean };
+      return { at, result, ok };
+    } catch {
+      return null;
+    }
+  }
+
+  private async saveSync(schoolId: number, v: { ok: boolean; result: string; hash?: string; prevHash?: string | null }) {
+    if (!this.cache.isHealthy) return;
+    const hash = v.hash ?? v.prevHash ?? null;
+    await this.cache.redis.set(lastSyncKey(schoolId), JSON.stringify({ at: new Date().toISOString(), ok: v.ok, result: v.result, hash })).catch(() => undefined);
+  }
+
+  /**
+   * Түнгі автосинхрондау: Nexus мекемесі байланыстырылған әр мектептің кестесін Nexus-тен қайта алады.
+   * Қауіпсіздік: Nexus бос жауап берсе (қате/демалыс) немесе сабақ саны күрт азайса, кесте өзгертілмейді.
+   */
+  @Cron(AUTO_SYNC_CRON, { name: 'nexus-auto-sync', timeZone: APP_TZ })
+  async autoSyncAll() {
+    if (!autoSyncEnabled() || !this.key) return;
+    const schools = await this.prisma.school.findMany({ where: { nexusInstitutionId: { not: null } }, select: { id: true } });
+    for (const { id } of schools) {
+      try {
+        this.log.log(`auto-sync school ${id}: ${await this.autoSync(id)}`);
+      } catch (e) {
+        const msg = (e as Error).message;
+        this.log.warn(`auto-sync school ${id} failed: ${msg}`);
+        await this.saveSync(id, { ok: false, result: msg, prevHash: (await this.lastHash(id)) ?? null });
+      }
+    }
+  }
+
+  private async lastHash(schoolId: number): Promise<string | null> {
+    if (!this.cache.isHealthy) return null;
+    try {
+      const raw = await this.cache.redis.get(lastSyncKey(schoolId));
+      return raw ? ((JSON.parse(raw) as { hash?: string | null }).hash ?? null) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async autoSync(schoolId: number): Promise<string> {
+    const actor: SystemActor = { schoolId, system: 'Nexus автосинхрондау' };
+    const { plan, year, from, to, lessons } = await this.plan(actor);
+    const hash = this.planHash(plan);
+    const prevHash = await this.lastHash(schoolId);
+    if (prevHash === hash) {
+      await this.saveSync(schoolId, { ok: true, result: 'Өзгеріс жоқ', hash });
+      return 'unchanged';
+    }
+    const slots = new Set(plan.slots.map((x) => `${x.classKey}|${x.subject}|${x.weekday}|${x.period}`)).size;
+    const current = await this.prisma.timetableSlot.count({ where: { schoolId, assignment: { schoolYearId: year.id } } });
+    if (current > 0 && slots < current * 0.5) {
+      const msg = `Өткізілді: Nexus-те ${slots} сабақ орны, Ұстазда ${current} — тым аз, кесте өзгертілмеді`;
+      await this.saveSync(schoolId, { ok: false, result: msg, prevHash });
+      return msg;
+    }
+    const r = await this.apply(actor, {}, plan, year, from, to, lessons);
+    await this.saveSync(schoolId, { ok: true, result: `Жаңартылды: ${r.slots} сабақ орны, жаңа мұғалім ${r.teachers.created}`, hash });
+    return 'updated';
   }
 }
 

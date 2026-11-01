@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
 import { useToast } from '../lib/toast';
-import { dot } from '../lib/format';
+import { dateTime, dot } from '../lib/format';
 import { Badge, Card, ConfirmDialog, DashboardCard, ErrorState, Field, Spinner } from '../components/ui';
 
 interface Status {
@@ -11,6 +11,7 @@ interface Status {
   institutionId: string | null;
   institutions: { id: string; name: string }[];
   error: string | null;
+  autoSync?: { enabled: boolean; last: { at: string; result: string; ok: boolean } | null };
 }
 
 interface Preview {
@@ -101,6 +102,17 @@ export function NexusSync() {
             <button className="btn primary" disabled={!s.institutionId || prev.isPending} onClick={() => prev.mutate()} style={{ marginBottom: 2 }}>
               {prev.isPending && <Spinner />} Алдын ала қарау
             </button>
+          </div>
+        )}
+        {s.institutionId && s.autoSync && (
+          <div className="muted" style={{ marginTop: 10, fontSize: 12.5 }}>
+            {s.autoSync.enabled ? 'Кесте күн сайын түнде (03:30) Nexus-тен автоматты жаңарады.' : 'Автоматты жаңарту өшірулі (NEXUS_AUTO_SYNC=false).'}
+            {s.autoSync.last && (
+              <>
+                {' '}
+                Соңғы жаңарту: {dateTime(s.autoSync.last.at)} — <span className={s.autoSync.last.ok ? undefined : 'c-bad'}>{s.autoSync.last.result}</span>
+              </>
+            )}
           </div>
         )}
       </Card>
