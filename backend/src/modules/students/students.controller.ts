@@ -6,7 +6,8 @@ import { CurrentUser, ReqMeta, RequirePermissions } from '../../common/decorator
 import { P } from '../../common/permissions';
 import type { AuthUser, RequestMeta } from '../../common/auth-user';
 import { StudentsService } from './students.service';
-import { MonthQuery, StudentExportQuery, StudentInput, StudentListQuery, StudentUpdate } from './students.dto';
+import { StudentImportService } from './student-import.service';
+import { MonthQuery, StudentExportQuery, StudentImportInput, StudentInput, StudentListQuery, StudentUpdate } from './students.dto';
 import { ExportService } from '../exports/export.service';
 import { AuditService } from '../audit/audit.service';
 import { todayStr } from '../../common/utils/dates';
@@ -19,6 +20,7 @@ export class StudentsController {
     private readonly students: StudentsService,
     private readonly exporter: ExportService,
     private readonly audit: AuditService,
+    private readonly importer: StudentImportService,
   ) {}
 
   @Get()
@@ -76,6 +78,15 @@ export class StudentsController {
   @Get(':id/assessments')
   assessments(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.students.assessments(user, id);
+  }
+
+  /** Контингент Excel файлынан импорт: apply=false — алдын ала қарау, apply=true — сақтау. */
+  @Post('import')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions(P.STUDENTS_WRITE, P.CLASSES_MANAGE)
+  importXlsx(@CurrentUser() user: AuthUser, @Body() dto: StudentImportInput, @ReqMeta() meta: RequestMeta) {
+    return this.importer.run(user, dto.data, dto.apply ?? false, meta);
   }
 
   @Post()
