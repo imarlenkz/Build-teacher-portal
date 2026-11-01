@@ -14,7 +14,7 @@ export function useTheme() {
   const setTheme = useCallback((t: Theme) => {
     localStorage.setItem('ustaz.theme', t);
     document.documentElement.dataset.theme = t;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#0e1114' : '#f4f5f7');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#0c0f0e' : '#f6f6f4');
     window.dispatchEvent(new CustomEvent(EVT, { detail: t }));
   }, []);
   return { theme, setTheme, toggle: () => setTheme(theme === 'dark' ? 'light' : 'dark') };
