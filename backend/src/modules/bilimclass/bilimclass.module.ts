@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, HttpCode, Injectable, Module, Po
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { CurrentUser, ReqMeta, RequirePermissions } from '../../common/decorators';
@@ -49,6 +49,8 @@ class BilimClassClassInput {
   grades: GradeRowInput[];
   /** Ұстазда жоқ пәндерді жасау (әдепкі: жоқ — ол пәндер өткізіледі). */
   @IsOptional() @IsBoolean() createSubjects?: boolean;
+  /** BilimClass пәнінің атауы → Ұстаздағы пәннің id-і, немесе 'new' (жаңа пән жасау). */
+  @IsOptional() @IsObject() subjectMap?: Record<string, number | 'new'>;
   @IsOptional() @IsBoolean() apply?: boolean;
 }
 
@@ -130,7 +132,16 @@ export class BilimClassService {
         select: { id: true, subjectId: true, name: true, teacherId: true },
       }),
     ]);
-    const plan = buildPlan(dto.groups, dto.grades, {
+    // Пәндерді сәйкестендіру: BilimClass атауы → Ұстаздағы пән (немесе жаңа пән).
+    const byId = new Map(subjects.map((s) => [s.id, s.name]));
+    const mapTo = new Map<string, string>();
+    const toCreate = new Set<string>();
+    for (const [from, to] of Object.entries(dto.subjectMap ?? {})) {
+      if (to === 'new') toCreate.add(normName(from));
+      else if (typeof to === 'number' && byId.has(to)) mapTo.set(normName(from), byId.get(to)!);
+    }
+    const remap = <T extends { subject: string }>(rows: T[]) => (mapTo.size ? rows.map((r) => ({ ...r, subject: mapTo.get(normName(r.subject)) ?? r.subject })) : rows);
+    const plan = buildPlan(remap(dto.groups), remap(dto.grades), {
       grade: cls.grade,
       students,
       subjects,
@@ -139,8 +150,10 @@ export class BilimClassService {
     const warnings = [...plan.warnings];
     const createSubjects = !!dto.createSubjects;
     const subjectId = new Map(subjects.map((s) => [normName(s.name), s.id]));
-    const hasSubject = (name: string) => subjectId.has(normName(name)) || createSubjects;
-    if (plan.missingSubjects.length && !createSubjects) warnings.unshift(`Ұстазда жоқ пәндер өткізіледі: ${plan.missingSubjects.join(', ')}`);
+    const creates = (name: string) => createSubjects || toCreate.has(normName(name));
+    const hasSubject = (name: string) => subjectId.has(normName(name)) || creates(name);
+    const skippedSubjects = plan.missingSubjects.filter((n) => !creates(n));
+    if (skippedSubjects.length) warnings.unshift(`Ұстазда жоқ пәндер өткізіледі: ${skippedSubjects.join(', ')}`);
 
     const groups = plan.groups.filter((g) => hasSubject(g.subject));
     const fo = plan.fo.filter((c) => hasSubject(c.subject));
@@ -221,8 +234,8 @@ export class BilimClassService {
     await this.prisma.$transaction(
       async (tx) => {
         // Пәндер
-        if (createSubjects) {
-          for (const name of plan.missingSubjects) {
+        {
+          for (const name of plan.missingSubjects.filter(creates)) {
             const s = await tx.subject.upsert({
               where: { schoolId_name: { schoolId: user.schoolId, name } },
               create: { schoolId: user.schoolId, name },

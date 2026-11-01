@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
 import { useToast } from '../lib/toast';
+import { useReference } from '../lib/reference';
 import { ClassBatch, mergeBatches, readExport } from '../lib/bilimclass';
 import { Badge, Card, ConfirmDialog, DashboardCard, Field, Spinner } from '../components/ui';
 
@@ -22,6 +23,9 @@ interface ClassResult {
 }
 
 type Row = { batch: ClassBatch; res?: ClassResult; error?: string };
+/** BilimClass пәні → Ұстаз пәнінің id-і, 'new' (жаңа пән) немесе жоқ (өткізу). */
+type SubjectMap = Record<string, number | 'new'>;
+type Opts = { quarter: number; subjectMap: SubjectMap };
 
 const sum = (rows: Row[], f: (r: ClassResult) => number) => rows.reduce((n, r) => n + (r.res ? f(r.res) : 0), 0);
 
@@ -31,7 +35,10 @@ export function BilimClassImport() {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [quarter, setQuarter] = useState(1);
-  const [createSubjects, setCreateSubjects] = useState(false);
+  const { ref } = useReference();
+  const [subjectMap, setSubjectMap] = useState<SubjectMap>({});
+  /** Осы файлдарда кездескен, Ұстазда жоқ пәндер (сәйкестендірілгеннен кейін де тізімде қалады). */
+  const [unknown, setUnknown] = useState<string[]>([]);
   const [files, setFiles] = useState<string[]>([]);
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
@@ -43,7 +50,7 @@ export function BilimClassImport() {
   const [confirm, setConfirm] = useState(false);
   const [applied, setApplied] = useState(false);
 
-  const run = async (batches: ClassBatch[], apply: boolean, opts = { quarter, createSubjects }) => {
+  const run = async (batches: ClassBatch[], apply: boolean, opts: Opts = { quarter, subjectMap }) => {
     setBusy({ done: 0, total: batches.length, apply });
     const out: Row[] = [];
     for (const batch of batches) {
@@ -51,7 +58,7 @@ export function BilimClassImport() {
         const res = await api.post<ClassResult>('/bilimclass/import', {
           ...batch,
           quarter: opts.quarter,
-          createSubjects: opts.createSubjects,
+          subjectMap: opts.subjectMap,
           apply,
         });
         out.push({ batch, res });
@@ -84,12 +91,14 @@ export function BilimClassImport() {
     }
     setFiles(Array.from(list).map((f) => f.name));
     setFileErrors(errs);
+    setUnknown([]);
+    setSubjectMap({});
     const batches = mergeBatches(parts);
     setRows(batches.map((batch) => ({ batch })));
-    if (batches.length) await run(batches, false);
+    if (batches.length) await run(batches, false, { quarter, subjectMap: {} });
   };
 
-  const preview = (opts: { quarter: number; createSubjects: boolean }) =>
+  const preview = (opts: Opts) =>
     rows.length &&
     !busy &&
     run(
@@ -109,7 +118,23 @@ export function BilimClassImport() {
   };
 
   const ready = rows.filter((r) => r.res?.portalClass);
-  const missingSubjects = [...new Set(rows.flatMap((r) => r.res?.missingSubjects ?? []))];
+  const missingNow = rows.flatMap((r) => r.res?.missingSubjects ?? []).join('|');
+  useEffect(() => {
+    const names = missingNow ? missingNow.split('|') : [];
+    setUnknown((u) => {
+      const next = [...new Set([...u, ...names])].sort((a, b) => a.localeCompare(b, 'kk'));
+      return next.length === u.length ? u : next;
+    });
+  }, [missingNow]);
+  const setMapping = (name: string, value: string) => {
+    const next = { ...subjectMap };
+    if (value === '') delete next[name];
+    else next[name] = value === 'new' ? 'new' : Number(value);
+    setSubjectMap(next);
+    preview({ quarter, subjectMap: next });
+  };
+  const subjects = [...ref.subjects].sort((a, b) => a.name.localeCompare(b.name, 'kk'));
+  const skippedCount = unknown.filter((n) => !subjectMap[n]).length;
 
   return (
     <div className="stack">
@@ -127,7 +152,7 @@ export function BilimClassImport() {
               onChange={(e) => {
                 const q = Number(e.target.value);
                 setQuarter(q);
-                preview({ quarter: q, createSubjects });
+                preview({ quarter: q, subjectMap });
               }}
             >
               {[1, 2, 3, 4].map((q) => (
@@ -173,28 +198,38 @@ export function BilimClassImport() {
             <DashboardCard label="БЖБ / ТЖБ / аралық" value={sum(rows, (r) => r.summative.results)} sub={`${sum(rows, (r) => r.summative.total)} жұмыс`} />
             <DashboardCard label="Тоқсандық баға" value={sum(rows, (r) => r.quarterMarks)} sub={`өткізілген жол: ${sum(rows, (r) => r.skipped)}`} />
           </div>
-          {missingSubjects.length > 0 && (
-            <div className="err-box" style={{ marginBottom: 12 }}>
-              Ұстазда жоқ пәндер: {missingSubjects.join(', ')}.
-              <label
-                style={{
-                  display: 'flex',
-                  gap: 6,
-                  alignItems: 'center',
-                  marginTop: 6,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={createSubjects}
-                  disabled={!!busy || applied}
-                  onChange={(e) => {
-                    setCreateSubjects(e.target.checked);
-                    preview({ quarter, createSubjects: e.target.checked });
-                  }}
-                />
-                Бұл пәндерді жасап, бағаларын да импорттау (белгіленбесе — өткізіледі; Админ › Пәндер бөлімінде атын өзгертіп, қайта импорттауға болады)
-              </label>
+          {unknown.length > 0 && (
+            <div className={skippedCount ? 'err-box' : undefined} style={{ marginBottom: 12, fontSize: 13 }}>
+              <div style={{ marginBottom: 8 }}>
+                <b>BilimClass пәндерін Ұстаз пәндерімен сәйкестендіріңіз.</b> Бұл пәндердің атауы Ұстазда жоқ. Таңдалмаған пәннің топтары мен бағалары өткізіледі
+                {skippedCount ? ` (қазір ${skippedCount} пән өткізіледі)` : ''}.
+              </div>
+              <table className="tbl">
+                <tbody>
+                  {unknown.map((name) => (
+                    <tr key={name}>
+                      <td style={{ width: '40%' }}>{name}</td>
+                      <td>
+                        <select
+                          className="select"
+                          value={String(subjectMap[name] ?? '')}
+                          disabled={!!busy || applied}
+                          onChange={(e) => setMapping(name, e.target.value)}
+                          style={{ minWidth: 260 }}
+                        >
+                          <option value="">— өткізу —</option>
+                          <option value="new">+ «{name}» деген жаңа пән жасау</option>
+                          {subjects.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
           <table className="tbl">
