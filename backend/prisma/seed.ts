@@ -11,6 +11,7 @@ import { AttendanceStatus, Gender, MovementType, Prisma, PrismaClient, RoleCode 
 import * as argon2 from 'argon2';
 import { DEFAULT_ROLE_PERMISSIONS } from '../src/common/permissions';
 import { DEFAULT_LEVELS } from '../src/modules/core/levels.service';
+import { computeQuarter, DEFAULT_WEIGHTS } from '../src/common/utils/grades';
 import { makeIin, PiiCipher } from '../src/common/utils/crypto';
 import { addDays, fmtDate, todayStr, toDate, weekday } from '../src/common/utils/dates';
 
@@ -518,6 +519,58 @@ async function demo() {
   await createAssessments(prevYear.quarters, prevClassIds, 4, true);
   if (curQ) await createAssessments(year.quarters, classIds, curQ.number, false);
   console.log('✓ assessments (БЖБ/ТЖБ)');
+
+  // Журнал: ағымдағы бағалар (1–10) және аяқталған тоқсандардың қорытынды бағалары.
+  if (curQ) {
+    for (const k of assessed) {
+      const [cls, subj] = k.split('|');
+      if (!classIds[cls]) continue;
+      const tl = teacherFor(cls, subj);
+      const members = students.filter((s) => s.cls === cls);
+      for (const q of year.quarters.filter((x) => x.number <= curQ.number)) {
+        const qs = fmtDate(q.startDate)!;
+        const qe = fmtDate(q.endDate)!;
+        const last = q.number === curQ.number && today < qe ? today : qe;
+        const colIds: number[] = [];
+        for (let d = addDays(qs, 2), i = 0; d <= last && i < 10; d = addDays(d, 6), i++) {
+          if (weekday(d) > 5) continue;
+          const c = await prisma.gradeColumn.create({ data: { schoolId: school.id, classId: classIds[cls], subjectId: subjects[subj], quarterId: q.id, teacherId: teacherIds[tl], date: toDate(d) } });
+          colIds.push(c.id);
+        }
+        await prisma.grade.createMany({
+          data: colIds.flatMap((cid) =>
+            members.flatMap((s) => {
+              const r = rng(s.seed + cid * 31);
+              if (r() < 0.35) return [];
+              return [{ columnId: cid, studentId: s.id, value: clamp(Math.round(10 * (s.base + (r() - 0.5) * 0.3)), 1, 10) }];
+            }),
+          ),
+        });
+        if (q.number >= curQ.number) continue;
+        const [grades, results] = await Promise.all([
+          prisma.grade.findMany({ where: { columnId: { in: colIds } } }),
+          prisma.assessmentResult.findMany({ where: { assessment: { classId: classIds[cls], subjectId: subjects[subj], quarterId: q.id } }, include: { assessment: true } }),
+        ]);
+        await prisma.quarterGrade.createMany({
+          data: members.flatMap((s) => {
+            const mine = results.filter((r) => r.studentId === s.id && !r.absent);
+            const t = mine.find((r) => r.assessment.type === 'TJB');
+            const c = computeQuarter(
+              {
+                fo: grades.filter((g) => g.studentId === s.id).map((g) => g.value),
+                bjb: mine.filter((r) => r.assessment.type === 'BJB').map((r) => ({ score: Number(r.score), max: Number(r.assessment.maxScore) })),
+                tjb: t ? { score: Number(t.score), max: Number(t.assessment.maxScore) } : null,
+              },
+              DEFAULT_WEIGHTS,
+              DEFAULT_LEVELS,
+            );
+            return c.mark == null ? [] : [{ schoolId: school.id, quarterId: q.id, classId: classIds[cls], subjectId: subjects[subj], studentId: s.id, mark: c.mark, computedPct: c.pct }];
+          }),
+        });
+      }
+    }
+    console.log('✓ journal (ағымдағы және тоқсандық бағалар)');
+  }
 
   // Өткен жылдың тоқсандық есептері тапсырылған; ағымдағы тоқсанда бірнешеуі тапсырылған.
   for (const k of Object.keys(prevAssignment)) {

@@ -23,6 +23,9 @@ export class LevelsService {
       (await this.prisma.schoolSettings.findUnique({ where: { schoolId } })) ?? {
         schoolId,
         attendanceThreshold: 80,
+        foWeight: 25,
+        bjbWeight: 25,
+        tjbWeight: 50,
         updatedAt: new Date(),
       }
     );

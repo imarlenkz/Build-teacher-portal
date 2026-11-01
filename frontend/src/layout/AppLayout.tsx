@@ -49,6 +49,7 @@ export function AppLayout() {
     { to: '/classes', label: t('nav.classes') },
     { to: '/attendance', label: t('nav.attendance') },
     { to: '/movements', label: t('nav.movements') },
+    { to: '/journal', label: t('nav.journal') },
     { to: '/bjb', label: t('nav.bjb') },
     { to: '/tjb', label: t('nav.tjb') },
     { to: '/tjb-analysis', label: t('nav.tjbAnalysis') },

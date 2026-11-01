@@ -22,6 +22,11 @@ class LevelsInput {
 class SchoolSettingsInput {
   @Type(() => Number) @IsInt() @Min(50) @Max(100) attendanceThreshold: number;
 }
+class GradingInput {
+  @Type(() => Number) @IsInt() @Min(0) @Max(100) foWeight: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(100) bjbWeight: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(100) tjbWeight: number;
+}
 class MeInput {
   @IsOptional() @IsIn(['kk', 'ru', 'en']) locale?: string;
 }
@@ -76,6 +81,19 @@ class SettingsService {
     return this.get(user);
   }
 
+  async setGrading(user: AuthUser, dto: GradingInput, meta: RequestMeta) {
+    if (dto.foWeight + dto.bjbWeight + dto.tjbWeight !== 100) throw new BadRequestException('Салмақтардың қосындысы 100% болуы керек');
+    const before = await this.levels.settings(user.schoolId);
+    const fmt = (s: { foWeight: number; bjbWeight: number; tjbWeight: number }) => `ФО ${s.foWeight}% · БЖБ ${s.bjbWeight}% · ТЖБ ${s.tjbWeight}%`;
+    const data = { foWeight: dto.foWeight, bjbWeight: dto.bjbWeight, tjbWeight: dto.tjbWeight };
+    await this.prisma.$transaction(async (tx) => {
+      await tx.schoolSettings.upsert({ where: { schoolId: user.schoolId }, create: { schoolId: user.schoolId, ...data }, update: data });
+      await this.audit.record(user, { action: 'Тоқсандық баға салмағын өзгертті', entity: 'school_settings', summary: 'Тоқсандық баға формуласы', before: fmt(before), after: fmt(dto) }, meta, tx);
+    });
+    await this.cache.bump(user.schoolId);
+    return this.get(user);
+  }
+
   async setMe(user: AuthUser, dto: MeInput) {
     if (dto.locale) await this.prisma.user.update({ where: { id: user.id }, data: { locale: dto.locale } });
     return { ok: true };
@@ -102,6 +120,12 @@ class SettingsController {
   @RequirePermissions(P.SETTINGS_MANAGE)
   school(@CurrentUser() user: AuthUser, @Body() dto: SchoolSettingsInput, @ReqMeta() meta: RequestMeta) {
     return this.svc.setSchool(user, dto, meta);
+  }
+
+  @Put('grading')
+  @RequirePermissions(P.SETTINGS_MANAGE)
+  grading(@CurrentUser() user: AuthUser, @Body() dto: GradingInput, @ReqMeta() meta: RequestMeta) {
+    return this.svc.setGrading(user, dto, meta);
   }
 
   @Put('me')

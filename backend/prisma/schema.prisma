@@ -119,6 +119,8 @@ model School {
   timetable        TimetableSlot[]
   assignments      TeachingAssignment[]
   attendanceReason AttendanceReason[]
+  gradeColumns     GradeColumn[]
+  quarterGrades    QuarterGrade[]
 
   @@map("schools")
 }
@@ -188,6 +190,7 @@ model Teacher {
   lessons        Lesson[]
   assessments    Assessment[]
   quarterReports QuarterReport[]
+  gradeColumns   GradeColumn[]
 
   @@index([schoolId])
   @@map("teachers")
@@ -223,6 +226,8 @@ model Quarter {
   schoolYear     SchoolYear      @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
   assessments    Assessment[]
   quarterReports QuarterReport[]
+  gradeColumns   GradeColumn[]
+  quarterGrades  QuarterGrade[]
 
   @@unique([schoolYearId, number])
   @@map("quarters")
@@ -248,6 +253,8 @@ model Class {
   movementsFrom   StudentMovement[]    @relation("MovementFrom")
   movementsTo     StudentMovement[]    @relation("MovementTo")
   quarterReports  QuarterReport[]
+  gradeColumns    GradeColumn[]
+  quarterGrades   QuarterGrade[]
 
   @@unique([schoolId, schoolYearId, name])
   @@map("classes")
@@ -264,6 +271,8 @@ model Subject {
   lessons        Lesson[]
   assessments    Assessment[]
   quarterReports QuarterReport[]
+  gradeColumns   GradeColumn[]
+  quarterGrades  QuarterGrade[]
 
   @@unique([schoolId, name])
   @@map("subjects")
@@ -353,6 +362,8 @@ model Student {
   movements         StudentMovement[]
   attendance        Attendance[]
   assessmentResults AssessmentResult[]
+  grades            Grade[]
+  quarterGrades     QuarterGrade[]
 
   @@unique([schoolId, studentCode])
   @@unique([schoolId, iinHash])
@@ -533,6 +544,76 @@ model AssessmentCriterionResult {
   @@map("assessment_criterion_results")
 }
 
+// ───────────────────────── Journal (ағымдағы бағалар, тоқсандық баға) ─────────────────────────
+
+/// Журнал бағаны: бір сабақ күні (немесе тапсырма) бойынша ағымдағы бағалар.
+model GradeColumn {
+  id        Int      @id @default(autoincrement())
+  schoolId  Int      @map("school_id")
+  classId   Int      @map("class_id")
+  subjectId Int      @map("subject_id")
+  quarterId Int      @map("quarter_id")
+  teacherId Int?     @map("teacher_id")
+  date      DateTime @db.Date
+  topic     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject  @relation(fields: [subjectId], references: [id])
+  quarter Quarter  @relation(fields: [quarterId], references: [id])
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  grades  Grade[]
+
+  @@index([classId, subjectId, quarterId])
+  @@map("grade_columns")
+}
+
+/// Ағымдағы (формативті) баға, 1–10 балл.
+model Grade {
+  id          Int      @id @default(autoincrement())
+  columnId    Int      @map("column_id")
+  studentId   Int      @map("student_id")
+  value       Int
+  updatedById Int?     @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  column  GradeColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([columnId, studentId])
+  @@index([studentId])
+  @@map("grades")
+}
+
+/// Мұғалім қойған тоқсандық қорытынды баға (2–5).
+model QuarterGrade {
+  id          Int      @id @default(autoincrement())
+  schoolId    Int      @map("school_id")
+  quarterId   Int      @map("quarter_id")
+  classId     Int      @map("class_id")
+  subjectId   Int      @map("subject_id")
+  studentId   Int      @map("student_id")
+  mark        Int
+  /// Баға қойылған сәттегі есептелген пайыз (тарих үшін).
+  computedPct Decimal? @map("computed_pct") @db.Decimal(5, 2)
+  updatedById Int?     @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  quarter Quarter @relation(fields: [quarterId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([quarterId, classId, subjectId, studentId])
+  @@index([studentId])
+  @@index([classId, subjectId])
+  @@map("quarter_grades")
+}
+
 // ───────────────────────── Settings ─────────────────────────
 
 /// Деңгей диапазондары — hardcode емес, мектеп әкімшілігі баптайды.
@@ -553,6 +634,10 @@ model LevelRange {
 model SchoolSettings {
   schoolId            Int     @id @map("school_id")
   attendanceThreshold Int     @default(80) @map("attendance_threshold")
+  /// Тоқсандық баға салмақтары (%): ағымдағы бағалау (ФО), БЖБ, ТЖБ.
+  foWeight            Int     @default(25) @map("fo_weight")
+  bjbWeight           Int     @default(25) @map("bjb_weight")
+  tjbWeight           Int     @default(50) @map("tjb_weight")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
