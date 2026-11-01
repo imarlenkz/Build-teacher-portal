@@ -1,43 +1,50 @@
-/* «Ұстаз» дизайн жүйесі — токендер handoff README-ге сәйкес. */
+/* «Ұстаз» дизайн жүйесі — Nexus (hi-tech premium) стиліне сәйкес токендер. */
 :root {
-  --bg: #f4f5f7;
+  --bg: #f6f6f4;
   --panel: #ffffff;
-  --ink: #15181c;
-  --muted: #5b626b;
-  --line: #e2e5e9;
-  --soft: #eff1f3;
-  --acc: oklch(0.52 0.14 255);
-  --accs: oklch(0.95 0.03 255);
-  --ok: oklch(0.5 0.12 155);
-  --oks: oklch(0.95 0.04 155);
-  --bad: oklch(0.52 0.16 25);
-  --bads: oklch(0.95 0.035 25);
-  --warn: oklch(0.52 0.11 70);
-  --warns: oklch(0.95 0.05 85);
-  --vio: oklch(0.5 0.13 300);
-  --vios: oklch(0.95 0.03 300);
-  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
-  --overlay: rgba(10, 12, 15, 0.45);
+  --ink: #101a27;
+  --muted: #646d78;
+  --line: #e6e6e2;
+  --soft: #efefeb;
+  --acc: #227a54;
+  --acc-fill: #2f9e6e;
+  --accs: #eafaf3;
+  --ok: #0f8a73;
+  --oks: #e3f6f1;
+  --bad: #b8563a;
+  --bads: #fbebe6;
+  --warn: #8a6520;
+  --warns: #f8f0dd;
+  --vio: #8e4a9e;
+  --vios: #f4eaf6;
+  --rail: #101a27;
+  --font: 'Nunito Sans Variable', 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Nunito Variable', 'Nunito', 'Nunito Sans Variable', system-ui, sans-serif;
+  --mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --overlay: rgba(12, 15, 14, 0.5);
+  --r-card: 16px;
+  --r-ctl: 10px;
   color-scheme: light;
 }
 [data-theme='dark'] {
-  --bg: #0e1114;
-  --panel: #15191d;
-  --ink: #e7e9ec;
-  --muted: #9aa2ab;
-  --line: #272d34;
-  --soft: #1c2126;
-  --acc: oklch(0.74 0.12 255);
-  --accs: oklch(0.3 0.06 255);
-  --ok: oklch(0.76 0.12 155);
-  --oks: oklch(0.3 0.05 155);
-  --bad: oklch(0.74 0.13 25);
-  --bads: oklch(0.31 0.07 25);
-  --warn: oklch(0.8 0.11 80);
-  --warns: oklch(0.32 0.05 80);
-  --vio: oklch(0.75 0.11 300);
-  --vios: oklch(0.3 0.06 300);
+  --bg: #0c0f0e;
+  --panel: #141917;
+  --ink: #f1f4f2;
+  --muted: #8d9692;
+  --line: #232b29;
+  --soft: #1b2220;
+  --acc: #57bb92;
+  --acc-fill: #2f9e6e;
+  --accs: #15302a;
+  --ok: #3fcfb0;
+  --oks: #12302a;
+  --bad: #ef8f76;
+  --bads: #3a1f19;
+  --warn: #e0b45c;
+  --warns: #33291a;
+  --vio: #c79ad2;
+  --vios: #2c1f31;
+  --rail: #2f9e6e;
   color-scheme: dark;
 }
 
@@ -1655,5 +1662,279 @@ table.tbl {
   }
   .journal-wrap {
     max-height: none;
+  }
+}
+
+/* ═══════════ Nexus стилі: пішін, қаріп, түймелер ═══════════ */
+body {
+  font-size: 13.5px;
+}
+.page-title,
+.card-title,
+.modal-title,
+.brand-name,
+.kpi-value,
+.login-card h1 {
+  font-family: var(--display);
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+.brand-name {
+  font-weight: 800;
+  font-size: 15px;
+}
+.logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 13px;
+  background: var(--acc-fill);
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 18px;
+}
+
+/* Бүйір мәзір */
+.sidebar {
+  padding: 18px 12px;
+}
+.nav a {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: color-mix(in srgb, var(--ink) 62%, transparent);
+  font-weight: 600;
+  transition: background-color 0.15s, color 0.15s;
+}
+.nav a:hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  color: var(--ink);
+}
+.nav a.active {
+  background: var(--rail);
+  color: #fff;
+  font-weight: 700;
+}
+.count-badge {
+  background: #d9634a;
+  color: #fff;
+}
+
+/* Тақырып жолағы */
+.header {
+  height: 64px;
+  background: var(--bg);
+  padding: 0 28px;
+}
+.header .school {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+}
+.chip {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.user-box {
+  height: 38px;
+}
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--accs);
+  color: var(--acc);
+  font-family: var(--display);
+  font-weight: 800;
+}
+.main {
+  padding: 26px 28px 44px;
+}
+
+/* Карталар */
+.card,
+.kpi {
+  border-radius: var(--r-card);
+  box-shadow: 0 1px 2px rgba(16, 26, 39, 0.04);
+}
+[data-theme='dark'] .card,
+[data-theme='dark'] .kpi {
+  box-shadow: none;
+}
+.card {
+  padding: 18px;
+}
+.kpi {
+  padding: 14px 16px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+button.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 26, 39, 0.08);
+}
+.kpi-label,
+.mini-kpi .l,
+.tbl th,
+.field > label,
+.field > .label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 6px 0 4px;
+}
+.mini-kpi {
+  border-radius: 12px;
+}
+
+/* Түймелер мен өрістер */
+.btn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  font-weight: 600;
+  font-size: 13px;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 5%, var(--panel));
+}
+.btn.primary {
+  height: 36px;
+  background: var(--acc-fill);
+  border-color: var(--acc-fill);
+  color: #fff;
+  font-weight: 700;
+}
+.btn.primary:hover:not(:disabled) {
+  background: #227a54;
+  border-color: #227a54;
+}
+.btn.ok {
+  height: 36px;
+}
+.btn.danger.solid {
+  color: #fff;
+}
+.btn.sm {
+  height: 28px;
+  padding: 0 11px;
+}
+.btn.icon {
+  width: 34px;
+}
+.btn.sm.icon {
+  width: 28px;
+}
+.input,
+.select,
+.textarea {
+  height: 36px;
+  border-radius: var(--r-ctl);
+  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.textarea {
+  height: auto;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--acc-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc-fill) 20%, transparent);
+}
+:focus-visible {
+  outline-color: var(--acc-fill);
+}
+.seg {
+  border-radius: 999px;
+  padding: 3px;
+}
+.seg button {
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.badge {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+/* Кестелер */
+.tbl th {
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  height: 38px;
+}
+.tbl td {
+  border-color: var(--line);
+}
+.tbl tbody tr:hover {
+  background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+}
+
+/* Модаль, мәзір, хабар */
+.modal {
+  border-radius: 20px;
+}
+.popover {
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(16, 26, 39, 0.14);
+}
+.menu-item {
+  border-radius: 10px;
+  font-weight: 600;
+}
+.toast {
+  border-radius: 12px;
+}
+
+/* Кіру беті */
+.login-card {
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 20px 50px rgba(16, 26, 39, 0.08);
+}
+
+/* Тек opacity: transform қалдырса, ішіндегі position:fixed модальдар бұзылады. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.main > * {
+  animation: fade-in 0.35s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .main > * {
+    animation: none;
   }
 }
