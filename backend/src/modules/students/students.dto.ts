@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Length, Matches, MaxLength, MinLength, IsIn } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Matches, MaxLength, MinLength, IsIn } from 'class-validator';
 import { Gender, StudentStatus } from '@prisma/client';
 import { PaginationQuery } from '../../common/dto/pagination.dto';
 import { IsDateStr } from '../../common/dto/validators';
@@ -47,4 +47,10 @@ export class StudentUpdate extends StudentInput {
 
 export class MonthQuery {
   @IsOptional() @Matches(/^\d{4}-\d{2}$/) month?: string;
+}
+
+export class StudentImportInput {
+  /** .xlsx файлының base64 мазмұны */
+  @IsString() @MaxLength(6_000_000) data: string;
+  @IsOptional() @IsBoolean() apply?: boolean;
 }

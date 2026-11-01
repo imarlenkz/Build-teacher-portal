@@ -14,6 +14,8 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
   app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
   app.disable('x-powered-by');
+  // Excel импорты base64 түрінде келеді (nginx шегі 5 МБ).
+  app.useBodyParser('json', { limit: '6mb' });
   app.use(
     helmet({
       contentSecurityPolicy: {

@@ -11,6 +11,7 @@ import { useIsMobile, useUrlState } from '../hooks';
 import { DataTable, Col } from '../components/DataTable';
 import { ErrorState, ExportMenu, FilterPanel, LevelBadge, SearchInput, Segmented, Spinner } from '../components/ui';
 import { StudentForm } from '../components/StudentForm';
+import { StudentImport } from '../components/StudentImport';
 
 export default function Students() {
   const { ref, quarterId } = useReference();
@@ -19,6 +20,7 @@ export default function Students() {
   const toast = useToast();
   const isMobile = useIsMobile();
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [s, set] = useUrlState({ search: '', classId: 0, gender: '', nationalityId: 0, status: 'ACTIVE', page: 1, pageSize: 25, sort: 'name', dir: 'asc' });
   const query = {
     search: s.search,
@@ -82,6 +84,11 @@ export default function Students() {
         <span className="page-sub">{q.data ? `${q.data.total} оқушы` : ''}</span>
         <span className="grow" />
         {can(PERM.EXPORT) && <ExportMenu onExport={exportFile} formats={['csv', 'xlsx']} />}
+        {can(PERM.STUDENTS_WRITE) && can(PERM.CLASSES) && (
+          <button className="btn" onClick={() => setImporting(true)}>
+            Excel-ден импорттау
+          </button>
+        )}
         {can(PERM.STUDENTS_WRITE) && (
           <button className="btn primary" onClick={() => setCreating(true)}>
             + Оқушы қосу
@@ -179,6 +186,7 @@ export default function Students() {
         />
       )}
       <StudentForm open={creating} onClose={() => setCreating(false)} onSaved={(id) => nav(`/students/${id}`)} />
+      {importing && <StudentImport onClose={() => setImporting(false)} />}
     </div>
   );
 }
