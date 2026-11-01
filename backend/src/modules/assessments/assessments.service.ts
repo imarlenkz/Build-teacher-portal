@@ -33,9 +33,10 @@ export class AssessmentsService {
         ...(q.classId ? { classId: q.classId } : {}),
         ...(q.subjectId ? { subjectId: q.subjectId } : {}),
         ...(q.quarterId ? { quarterId: q.quarterId } : {}),
+        ...(q.groupId ? { OR: [{ groupId: q.groupId }, { groupId: null }] } : {}),
         ...(ids ? { classId: q.classId ? (ids.includes(q.classId) ? q.classId : -1) : { in: ids } } : {}),
       },
-      include: { class: true, subject: true, quarter: true, _count: { select: { results: true, criteria: true } } },
+      include: { class: true, subject: true, quarter: true, group: { select: { name: true } }, _count: { select: { results: true, criteria: true } } },
       orderBy: [{ quarter: { number: 'asc' } }, { type: 'asc' }, { createdAt: 'asc' }],
     });
     const avgs = rows.length
@@ -52,6 +53,8 @@ export class AssessmentsService {
       subject: a.subject.name,
       quarterId: a.quarterId,
       quarter: a.quarter.number,
+      groupId: a.groupId,
+      groupName: a.group?.name ?? null,
       maxScore: Number(a.maxScore),
       date: fmtDate(a.date),
       results: a._count.results,
@@ -63,7 +66,7 @@ export class AssessmentsService {
   private async load(user: AuthUser, id: number) {
     const a = await this.prisma.assessment.findFirst({
       where: { id, schoolId: user.schoolId },
-      include: { criteria: { orderBy: { order: 'asc' } }, class: true, subject: true, quarter: true },
+      include: { criteria: { orderBy: { order: 'asc' } }, class: true, subject: true, quarter: true, group: { select: { name: true } } },
     });
     if (!a) throw new NotFoundException('Бағалау табылмады');
     await this.scope.assertClass(user, a.classId);
@@ -74,7 +77,7 @@ export class AssessmentsService {
   async get(user: AuthUser, id: number) {
     const a = await this.load(user, id);
     const [students, results] = await Promise.all([
-      this.prisma.student.findMany({ where: { classId: a.classId, status: 'ACTIVE', deletedAt: null }, select: { id: true, fullName: true, studentCode: true }, orderBy: { fullName: 'asc' } }),
+      this.prisma.student.findMany({ where: this.rosterWhere(a), select: { id: true, fullName: true, studentCode: true }, orderBy: { fullName: 'asc' } }),
       this.prisma.assessmentResult.findMany({ where: { assessmentId: id }, include: { criterionResults: true, student: { select: { id: true, fullName: true, studentCode: true } } } }),
     ]);
     const lv = await this.levels.get(user.schoolId);
@@ -111,6 +114,8 @@ export class AssessmentsService {
       subject: a.subject.name,
       quarterId: a.quarterId,
       quarter: a.quarter.number,
+      groupId: a.groupId,
+      groupName: a.group?.name ?? null,
       maxScore: Number(a.maxScore),
       date: fmtDate(a.date),
       criteria: a.criteria.map((c) => ({ id: c.id, code: c.code, topic: c.topic, maxScore: Number(c.maxScore) })),
@@ -164,6 +169,13 @@ export class AssessmentsService {
     };
   }
 
+  /** Енгізу тізімі: топқа арналса — топ мүшелері, әйтпесе сыныптың белсенді оқушылары. */
+  private rosterWhere(a: { classId: number; groupId: number | null }): Prisma.StudentWhereInput {
+    return a.groupId
+      ? { groupMemberships: { some: { groupId: a.groupId } }, status: 'ACTIVE', deletedAt: null }
+      : { classId: a.classId, status: 'ACTIVE', deletedAt: null };
+  }
+
   private validateCriteria(dto: AssessmentInput) {
     if (dto.type === 'TJB' && dto.criteria?.length) {
       const sum = dto.criteria.reduce((s, c) => s + c.maxScore, 0);
@@ -179,13 +191,14 @@ export class AssessmentsService {
 
   async create(user: AuthUser, dto: AssessmentInput, meta: RequestMeta) {
     await this.scope.assertTeaches(user, dto.classId, dto.subjectId);
+    const group = await this.scope.resolveGroup(user, dto.classId, dto.subjectId, dto.groupId, true);
     this.validateCriteria(dto);
     const cls = await this.prisma.class.findUniqueOrThrow({ where: { id: dto.classId } });
     const quarter = await this.prisma.quarter.findFirst({ where: { id: dto.quarterId, schoolYearId: cls.schoolYearId } });
     if (!quarter) throw new BadRequestException('Тоқсан сынып оқу жылына сәйкес емес');
     if (dto.type === 'TJB') {
-      const dup = await this.prisma.assessment.findFirst({ where: { type: 'TJB', classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId } });
-      if (dup) throw new BadRequestException('Бұл тоқсанға ТЖБ бұрын құрылған');
+      const dup = await this.prisma.assessment.findFirst({ where: { type: 'TJB', classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, groupId: group?.id ?? null } });
+      if (dup) throw new BadRequestException(group ? `${group.name} үшін бұл тоқсанға ТЖБ бұрын құрылған` : 'Бұл тоқсанға ТЖБ бұрын құрылған');
     }
     const a = await this.prisma.$transaction(async (tx) => {
       const a = await tx.assessment.create({
@@ -195,6 +208,7 @@ export class AssessmentsService {
           classId: dto.classId,
           subjectId: dto.subjectId,
           quarterId: dto.quarterId,
+          groupId: group?.id ?? null,
           teacherId: user.teacherId,
           section: dto.section ?? null,
           title: dto.title,
@@ -203,7 +217,7 @@ export class AssessmentsService {
           criteria: { create: (dto.criteria ?? []).map((c, i) => ({ code: c.code, topic: c.topic, maxScore: c.maxScore, order: i })) },
         },
       });
-      await this.audit.record(user, { action: `${TYPE_KK[dto.type]} құрды`, entity: 'assessment', entityId: a.id, summary: `${cls.name} · ${dto.title} · /${dto.maxScore}` }, meta, tx);
+      await this.audit.record(user, { action: `${TYPE_KK[dto.type]} құрды`, entity: 'assessment', entityId: a.id, summary: `${cls.name}${group ? ` (${group.name})` : ''} · ${dto.title} · /${dto.maxScore}` }, meta, tx);
       return a;
     });
     return this.get(user, a.id);
@@ -211,7 +225,7 @@ export class AssessmentsService {
 
   async update(user: AuthUser, id: number, dto: AssessmentInput, meta: RequestMeta) {
     const a = await this.load(user, id);
-    await this.scope.assertTeaches(user, a.classId, a.subjectId);
+    await this.scope.assertWriteScope(user, a.classId, a.subjectId, a.groupId);
     this.validateCriteria({ ...dto, type: a.type });
     const hasResults = (await this.prisma.assessmentResult.count({ where: { assessmentId: id } })) > 0;
     const structureChanged =
@@ -244,10 +258,10 @@ export class AssessmentsService {
 
   async saveResults(user: AuthUser, id: number, dto: SaveResultsInput, meta: RequestMeta) {
     const a = await this.load(user, id);
-    await this.scope.assertTeaches(user, a.classId, a.subjectId);
+    await this.scope.assertWriteScope(user, a.classId, a.subjectId, a.groupId);
     const max = Number(a.maxScore);
     const allowedStudents = new Set(
-      (await this.prisma.student.findMany({ where: { OR: [{ classId: a.classId, status: 'ACTIVE' }, { assessmentResults: { some: { assessmentId: id } } }], deletedAt: null }, select: { id: true } })).map((s) => s.id),
+      (await this.prisma.student.findMany({ where: { OR: [this.rosterWhere(a), { assessmentResults: { some: { assessmentId: id } } }], deletedAt: null }, select: { id: true } })).map((s) => s.id),
     );
     const prepared = dto.results.map((r) => {
       if (!allowedStudents.has(r.studentId)) throw new BadRequestException('Тізімде басқа сыныптың оқушысы бар');
@@ -308,7 +322,7 @@ export class AssessmentsService {
 
   async remove(user: AuthUser, id: number, meta: RequestMeta) {
     const a = await this.load(user, id);
-    await this.scope.assertTeaches(user, a.classId, a.subjectId);
+    await this.scope.assertWriteScope(user, a.classId, a.subjectId, a.groupId);
     await this.prisma.$transaction(async (tx) => {
       await tx.assessment.delete({ where: { id } });
       await this.audit.record(user, { action: `${TYPE_KK[a.type]} жойды`, entity: 'assessment', entityId: id, summary: `${a.class.name} · ${a.subject.name} · ${a.title}` }, meta, tx);

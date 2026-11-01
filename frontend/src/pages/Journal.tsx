@@ -14,18 +14,20 @@ const key = (sid: number, cid: number) => `${sid}:${cid}`;
 const MARKS = [2, 3, 4, 5];
 
 export default function JournalPage() {
-  const { ref, quarterId, setQuarterId, year, subjectsOf } = useReference();
+  const { ref, quarterId, setQuarterId, year, subjectsOf, groupsOf } = useReference();
   const { can } = useAuth();
   const toast = useToast();
-  const [s, set] = useUrlState({ classId: 0, subjectId: 0, view: 'quarter' });
+  const [s, set] = useUrlState({ classId: 0, subjectId: 0, groupId: 0, view: 'quarter' });
   const classId = s.classId || ref.classes.find((c) => c.isHomeroom)?.id || ref.classes[0]?.id || 0;
   const subjects = subjectsOf(classId);
   const subjectId = subjects.some((x) => x.id === s.subjectId) ? s.subjectId : (subjects[0]?.id ?? 0);
   const view = s.view === 'year' ? 'year' : 'quarter';
+  const groups = groupsOf(classId, subjectId);
+  const groupId = groups.length ? (groups.some((g) => g.id === s.groupId) ? s.groupId : groups[0].id) : undefined;
 
-  const params = { classId, subjectId, quarterId };
+  const params = { classId, subjectId, quarterId, groupId };
   const q = useQuery({ queryKey: ['journal', params], queryFn: () => api.get<Journal>('/journal', params), enabled: view === 'quarter' && !!classId && !!subjectId });
-  const y = useQuery({ queryKey: ['journal-year', classId, subjectId], queryFn: () => api.get<JournalYear>('/journal/year', { classId, subjectId }), enabled: view === 'year' && !!classId && !!subjectId });
+  const y = useQuery({ queryKey: ['journal-year', classId, subjectId, groupId], queryFn: () => api.get<JournalYear>('/journal/year', { classId, subjectId, groupId }), enabled: view === 'year' && !!classId && !!subjectId });
 
   const exportFile = async (format: string) => {
     try {
@@ -54,7 +56,7 @@ export default function JournalPage() {
 
       <div className="filters" style={{ alignItems: 'flex-end' }}>
         <Field label="Сынып">
-          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0 })}>
+          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0, groupId: 0 })}>
             {ref.classes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -63,7 +65,7 @@ export default function JournalPage() {
           </select>
         </Field>
         <Field label="Пән">
-          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value) })}>
+          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value), groupId: 0 })}>
             {subjects.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.name}
@@ -71,6 +73,17 @@ export default function JournalPage() {
             ))}
           </select>
         </Field>
+        {!!groups.length && (
+          <Field label="Топ">
+            <select className="select" value={groupId} onChange={(e) => set({ groupId: Number(e.target.value) })}>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {view === 'quarter' && (
           <Field label="Тоқсан">
             <select className="select" value={quarterId} onChange={(e) => setQuarterId(Number(e.target.value))}>
@@ -93,7 +106,7 @@ export default function JournalPage() {
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : q.data ? (
-        <QuarterView key={`${q.data.classId}:${q.data.subjectId}:${q.data.quarterId}`} j={q.data} canWrite={can(PERM.ASSESS) && q.data.canWrite} />
+        <QuarterView key={`${q.data.classId}:${q.data.subjectId}:${q.data.quarterId}:${q.data.groupId ?? 0}`} j={q.data} canWrite={can(PERM.ASSESS) && q.data.canWrite} />
       ) : null}
     </div>
   );
@@ -437,7 +450,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
   );
 }
 
-const base = (j: Journal) => ({ classId: j.classId, subjectId: j.subjectId, quarterId: j.quarterId });
+const base = (j: Journal) => ({ classId: j.classId, subjectId: j.subjectId, quarterId: j.quarterId, groupId: j.groupId ?? undefined });
 
 function ColumnForm({ j, initial, onClose, onSaved, dirty }: { j: Journal; initial: Journal['columns'][number] | null; onClose: () => void; onSaved: () => void; dirty: boolean }) {
   const { ref } = useReference();

@@ -27,7 +27,7 @@ class JournalController {
 
   @Get('year')
   year(@CurrentUser() user: AuthUser, @Query() q: JournalYearQuery) {
-    return this.svc.year(user, q.classId, q.subjectId);
+    return this.svc.year(user, q.classId, q.subjectId, q.groupId);
   }
 
   @Get('export')
@@ -62,10 +62,10 @@ class JournalController {
       r.computed.mark,
       r.final?.mark ?? null,
     ]);
-    const title = `Журнал: ${j.className} · ${j.subject} · ${j.quarter}-тоқсан`;
+    const title = `Журнал: ${j.className}${j.groupName ? ` (${j.groupName})` : ''} · ${j.subject} · ${j.quarter}-тоқсан`;
     const subtitle = `Салмақтар: ФО ${j.weights.fo}% · БЖБ ${j.weights.bjb}% · ТЖБ ${j.weights.tjb}%`;
     await this.audit.record(user, { action: 'Экспорт', entity: 'journal', entityId: `${q.classId}:${q.subjectId}:${q.quarterId}`, summary: `${title} (${q.format.toUpperCase()})` }, meta);
-    const name = `journal_${j.className}_${j.subject}_${j.quarter}.${q.format}`;
+    const name = `journal_${j.className}${j.groupName ? `_${j.groupName}` : ''}_${j.subject}_${j.quarter}.${q.format}`;
     if (q.format === 'csv') return this.exporter.send(res, this.exporter.csv(headers, rows), name, 'csv');
     const buf = await this.exporter.xlsx([
       { name: 'Журнал', title, subtitle, headers, rows },

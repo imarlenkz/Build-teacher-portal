@@ -67,8 +67,17 @@ export class ReferenceService {
     const extra = homeroom.size
       ? await this.prisma.teachingAssignment.findMany({ where: { classId: { in: [...homeroom] } }, select: { classId: true, subjectId: true, teacherId: true } })
       : [];
+    const groups = await this.prisma.subjectGroup.findMany({
+      where: { schoolId: user.schoolId, classId: { in: classes.map((c) => c.id) } },
+      select: { id: true, classId: true, subjectId: true, name: true, teacherId: true },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    });
     const pairs = new Map<string, { classId: number; subjectId: number }>();
-    [...assignments, ...extra].forEach((a) => pairs.set(`${a.classId}:${a.subjectId}`, { classId: a.classId, subjectId: a.subjectId }));
+    const myGroups = groups.filter((g) => g.teacherId != null && g.teacherId === user.teacherId);
+    [...assignments, ...extra, ...myGroups].forEach((a) => pairs.set(`${a.classId}:${a.subjectId}`, { classId: a.classId, subjectId: a.subjectId }));
+    // Пәннің негізгі мұғалімі / жетекші / әкімшілік барлық топты көреді; топ мұғалімі — тек өз тобын.
+    const whole = new Set([...assignments, ...extra].map((a) => `${a.classId}:${a.subjectId}`));
+    const wide = user.permissions.includes(P.SCHOOL_WIDE);
 
     const year = years.find((y) => y.id === yearId) ?? current;
     const cq =
@@ -91,6 +100,9 @@ export class ReferenceService {
       classes: classes.map((c) => ({ id: c.id, name: c.name, grade: c.grade, isHomeroom: homeroom.has(c.id) })),
       subjects: subjects.map((s) => ({ id: s.id, name: s.name })),
       classSubjects: [...pairs.values()],
+      groups: groups
+        .filter((g) => wide || whole.has(`${g.classId}:${g.subjectId}`) || g.teacherId === user.teacherId)
+        .map((g) => ({ id: g.id, classId: g.classId, subjectId: g.subjectId, name: g.name })),
       nationalities,
       reasons,
       levels,

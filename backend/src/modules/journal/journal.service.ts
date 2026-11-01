@@ -35,43 +35,64 @@ export class JournalService {
     ]);
     if (!subject) throw new NotFoundException('Пән табылмады');
     if (!quarter) throw new BadRequestException('Тоқсан сынып оқу жылына сәйкес емес');
-    return { cls, subject, quarter };
+    const group = await this.scope.resolveGroup(user, q.classId, q.subjectId, q.groupId);
+    return { cls, subject, quarter, group };
   }
 
-  private async canWrite(user: AuthUser, classId: number, subjectId: number) {
+  private async canWrite(user: AuthUser, q: { classId: number; subjectId: number; groupId?: number | null }) {
     if (!this.scope.can(user, P.ASSESSMENTS_WRITE)) return false;
     try {
-      await this.scope.assertTeaches(user, classId, subjectId);
+      await this.scope.assertTeaches(user, q.classId, q.subjectId);
+      await this.scope.resolveGroup(user, q.classId, q.subjectId, q.groupId, true);
       return true;
     } catch {
       return false;
     }
   }
 
+  /**
+   * Топ таңдалса: топ мүшелері + топ бөлінгенге дейінгі деректері бар, басқа топқа кірмеген оқушылар.
+   * Топтар жоқ болса: сыныптың белсенді оқушылары + деректері бар (кейін кеткен) оқушылар.
+   */
+  private async students(user: AuthUser, classId: number, subjectId: number, groupId: number | null, linked: Set<number>) {
+    const others = groupId
+      ? new Set((await this.prisma.subjectGroupMember.findMany({ where: { classId, subjectId, groupId: { not: groupId } }, select: { studentId: true } })).map((m) => m.studentId))
+      : new Set<number>();
+    const linkedIds = [...linked].filter((id) => !others.has(id));
+    return this.prisma.student.findMany({
+      where: {
+        schoolId: user.schoolId,
+        deletedAt: null,
+        OR: [groupId ? { groupMemberships: { some: { groupId } }, status: 'ACTIVE' } : { classId, status: 'ACTIVE' }, { id: { in: linkedIds } }],
+      },
+      select: { id: true, fullName: true, studentCode: true, classId: true, status: true, groupMemberships: { where: { classId, subjectId }, select: { groupId: true } } },
+      orderBy: { fullName: 'asc' },
+    });
+  }
+
   /** Журнал: сыныптың белсенді оқушылары + тоқсанда бағасы бар (кейін кеткен) оқушылар. */
   async get(user: AuthUser, q: JournalQuery) {
-    const { cls, subject, quarter } = await this.context(user, q);
-    const where = { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId };
+    const { cls, subject, quarter, group } = await this.context(user, q);
+    const base = { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId };
+    // Топ көрінісінде топқа арналған және топ бөлінгенге дейін бүкіл сыныпқа жасалған деректер көрсетіледі.
+    const where = group ? { ...base, OR: [{ groupId: group.id }, { groupId: null }] } : base;
     const [columns, assessments, finals, lv, w, canWrite] = await Promise.all([
       this.prisma.gradeColumn.findMany({ where, include: { grades: true }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
       this.prisma.assessment.findMany({ where, include: { results: true }, orderBy: [{ type: 'asc' }, { date: 'asc' }, { createdAt: 'asc' }] }),
-      this.prisma.quarterGrade.findMany({ where }),
+      this.prisma.quarterGrade.findMany({ where: base }),
       this.levels.get(user.schoolId),
       this.weights(user.schoolId),
-      this.canWrite(user, q.classId, q.subjectId),
+      this.canWrite(user, q),
     ]);
     const linked = new Set<number>([
       ...columns.flatMap((c) => c.grades.map((g) => g.studentId)),
       ...assessments.flatMap((a) => a.results.map((r) => r.studentId)),
       ...finals.map((f) => f.studentId),
     ]);
-    const students = await this.prisma.student.findMany({
-      where: { schoolId: user.schoolId, deletedAt: null, OR: [{ classId: q.classId, status: 'ACTIVE' }, { id: { in: [...linked] } }] },
-      select: { id: true, fullName: true, studentCode: true, classId: true, status: true },
-      orderBy: { fullName: 'asc' },
-    });
+    const students = await this.students(user, q.classId, q.subjectId, group?.id ?? null, linked);
     const bjb = assessments.filter((a) => a.type === 'BJB');
-    const tjb = assessments.find((a) => a.type === 'TJB') ?? null;
+    // Топ көрінісінде топтың ТЖБ-сы басым; болмаса бүкіл сыныптың ТЖБ-сы.
+    const tjb = assessments.filter((a) => a.type === 'TJB').sort((a, b) => (b.groupId ? 1 : 0) - (a.groupId ? 1 : 0))[0] ?? null;
 
     const rows = students.map((s) => {
       const marks = columns.map((c) => c.grades.find((g) => g.studentId === s.id)?.value ?? null);
@@ -95,7 +116,7 @@ export class JournalService {
         studentId: s.id,
         fullName: s.fullName,
         studentCode: s.studentCode,
-        left: s.classId !== q.classId || s.status !== 'ACTIVE',
+        left: s.classId !== q.classId || s.status !== 'ACTIVE' || (!!group && !s.groupMemberships.some((m) => m.groupId === group.id)),
         marks,
         foCount: marks.filter((m) => m != null).length,
         foAvg: computed.foPct == null ? null : round1((computed.foPct / 100) * 10),
@@ -111,6 +132,8 @@ export class JournalService {
       className: cls.name,
       subjectId: subject.id,
       subject: subject.name,
+      groupId: group?.id ?? null,
+      groupName: group?.name ?? null,
       quarterId: quarter.id,
       quarter: quarter.number,
       startDate: fmtDate(quarter.startDate),
@@ -127,17 +150,14 @@ export class JournalService {
   }
 
   /** Жылдық көрініс: барлық тоқсанның қойылған бағалары + жылдық баға. */
-  async year(user: AuthUser, classId: number, subjectId: number) {
+  async year(user: AuthUser, classId: number, subjectId: number, groupId?: number | null) {
     const cls = await this.scope.assertClass(user, classId);
     const subject = await this.prisma.subject.findFirst({ where: { id: subjectId, schoolId: user.schoolId } });
     if (!subject) throw new NotFoundException('Пән табылмады');
+    const group = await this.scope.resolveGroup(user, classId, subjectId, groupId);
     const quarters = await this.prisma.quarter.findMany({ where: { schoolYearId: cls.schoolYearId }, orderBy: { number: 'asc' } });
     const finals = await this.prisma.quarterGrade.findMany({ where: { classId, subjectId, quarterId: { in: quarters.map((x) => x.id) } } });
-    const students = await this.prisma.student.findMany({
-      where: { schoolId: user.schoolId, deletedAt: null, OR: [{ classId, status: 'ACTIVE' }, { id: { in: [...new Set(finals.map((f) => f.studentId))] } }] },
-      select: { id: true, fullName: true, studentCode: true, classId: true, status: true },
-      orderBy: { fullName: 'asc' },
-    });
+    const students = await this.students(user, classId, subjectId, group?.id ?? null, new Set(finals.map((f) => f.studentId)));
     const rows = students.map((s) => {
       const marks = quarters.map((qq) => finals.find((f) => f.studentId === s.id && f.quarterId === qq.id)?.mark ?? null);
       return { studentId: s.id, fullName: s.fullName, studentCode: s.studentCode, left: s.classId !== classId || s.status !== 'ACTIVE', marks, year: yearMark(marks), complete: marks.every((m) => m != null) };
@@ -148,6 +168,8 @@ export class JournalService {
       className: cls.name,
       subjectId,
       subject: subject.name,
+      groupId: group?.id ?? null,
+      groupName: group?.name ?? null,
       quarters: quarters.map((qq) => ({ id: qq.id, number: qq.number })),
       rows,
       distribution: [2, 3, 4, 5].map((m) => withYear.filter((r) => r.year === m).length),
@@ -157,6 +179,7 @@ export class JournalService {
   private async assertWritable(user: AuthUser, q: JournalQuery) {
     const ctx = await this.context(user, q);
     await this.scope.assertTeaches(user, q.classId, q.subjectId);
+    await this.scope.resolveGroup(user, q.classId, q.subjectId, q.groupId, true);
     return ctx;
   }
 
@@ -168,15 +191,15 @@ export class JournalService {
   }
 
   async createColumn(user: AuthUser, dto: CreateColumnInput, meta: RequestMeta) {
-    const { cls, subject, quarter } = await this.assertWritable(user, dto);
+    const { cls, subject, quarter, group } = await this.assertWritable(user, dto);
     this.assertInQuarter(dto.date, quarter);
-    const count = await this.prisma.gradeColumn.count({ where: { classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId } });
+    const count = await this.prisma.gradeColumn.count({ where: { classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, groupId: group?.id ?? null } });
     if (count >= 120) throw new BadRequestException('Бір тоқсанға 120-дан артық баған қосуға болмайды');
     const c = await this.prisma.$transaction(async (tx) => {
       const c = await tx.gradeColumn.create({
-        data: { schoolId: user.schoolId, classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, teacherId: user.teacherId, date: toDate(dto.date), topic: dto.topic || null },
+        data: { schoolId: user.schoolId, classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, groupId: group?.id ?? null, teacherId: user.teacherId, date: toDate(dto.date), topic: dto.topic || null },
       });
-      await this.audit.record(user, { action: 'Журналға баған қосты', entity: 'journal', entityId: c.id, summary: `${cls.name} · ${subject.name} · ${fmtDot(dto.date)}${dto.topic ? ` · ${dto.topic}` : ''}` }, meta, tx);
+      await this.audit.record(user, { action: 'Журналға баған қосты', entity: 'journal', entityId: c.id, summary: `${cls.name}${group ? ` (${group.name})` : ''} · ${subject.name} · ${fmtDot(dto.date)}${dto.topic ? ` · ${dto.topic}` : ''}` }, meta, tx);
       return c;
     });
     return { id: c.id, date: fmtDate(c.date)!, topic: c.topic };
@@ -185,7 +208,7 @@ export class JournalService {
   private async loadColumn(user: AuthUser, id: number) {
     const c = await this.prisma.gradeColumn.findFirst({ where: { id, schoolId: user.schoolId }, include: { class: true, subject: true, quarter: true, _count: { select: { grades: true } } } });
     if (!c) throw new NotFoundException('Журнал бағаны табылмады');
-    await this.scope.assertTeaches(user, c.classId, c.subjectId);
+    await this.scope.assertWriteScope(user, c.classId, c.subjectId, c.groupId);
     return c;
   }
 
@@ -218,12 +241,12 @@ export class JournalService {
   /** Ағымдағы бағаларды топтап сақтау (тек өзгергендері жіберіледі). */
   async saveMarks(user: AuthUser, dto: SaveMarksInput, meta: RequestMeta) {
     const { cls, subject, quarter } = await this.assertWritable(user, dto);
-    const columns = await this.prisma.gradeColumn.findMany({ where: { classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId }, select: { id: true } });
-    const colIds = new Set(columns.map((c) => c.id));
-    const allowed = await this.allowedStudents(user, dto);
+    const current = await this.get(user, dto);
+    const colIds = new Set(current.columns.map((c) => c.id));
+    const allowed = new Set(current.rows.map((r) => r.studentId));
     for (const m of dto.marks) {
       if (!colIds.has(m.columnId)) throw new BadRequestException('Баған осы журналға жатпайды');
-      if (!allowed.has(m.studentId)) throw new BadRequestException('Тізімде басқа сыныптың оқушысы бар');
+      if (!allowed.has(m.studentId)) throw new BadRequestException('Тізімде бұл журналға (сыныпқа не топқа) жатпайтын оқушы бар');
     }
     let set = 0;
     let cleared = 0;
@@ -251,29 +274,12 @@ export class JournalService {
     return this.get(user, dto);
   }
 
-  private async allowedStudents(user: AuthUser, q: JournalQuery) {
-    const rows = await this.prisma.student.findMany({
-      where: {
-        schoolId: user.schoolId,
-        deletedAt: null,
-        OR: [
-          { classId: q.classId, status: 'ACTIVE' },
-          { grades: { some: { column: { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId } } } },
-          { assessmentResults: { some: { assessment: { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId } } } },
-          { quarterGrades: { some: { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId } } },
-        ],
-      },
-      select: { id: true },
-    });
-    return new Set(rows.map((r) => r.id));
-  }
-
   /** Тоқсандық қорытынды бағаларды қою. Есептелген пайыз тарих үшін бірге сақталады. */
   async saveFinals(user: AuthUser, dto: SaveFinalsInput, meta: RequestMeta) {
     const { cls, subject, quarter } = await this.assertWritable(user, dto);
     const current = await this.get(user, dto);
     const byStudent = new Map(current.rows.map((r) => [r.studentId, r]));
-    for (const g of dto.grades) if (!byStudent.has(g.studentId)) throw new BadRequestException('Тізімде басқа сыныптың оқушысы бар');
+    for (const g of dto.grades) if (!byStudent.has(g.studentId)) throw new BadRequestException('Тізімде бұл журналға (сыныпқа не топқа) жатпайтын оқушы бар');
     const changes: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       for (const g of dto.grades) {

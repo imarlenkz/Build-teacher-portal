@@ -19,7 +19,7 @@ export interface ClassRow {
   boys: number;
   girls: number;
   attendancePct: number | null;
-  subjects: { id: number; subjectId: number; subject: string; teacherId: number; teacher: string }[];
+  subjects: { id: number; subjectId: number; subject: string; teacherId: number; teacher: string; groups: { id: number; name: string; teacherId: number | null; teacher: string | null; size: number }[] }[];
 }
 interface Teacher {
   id: number;
@@ -154,6 +154,8 @@ function ClassEditor({ c, teachers, onClose }: { c: ClassRow; teachers: Teacher[
   });
   const active = teachers.filter((t) => t.active);
   const subjList = subjects.data ?? ref.subjects;
+  const [groupsFor, setGroupsFor] = useState<ClassRow['subjects'][number] | null>(null);
+  if (groupsFor) return <GroupsEditor c={c} s={groupsFor} teachers={active} onClose={() => (setGroupsFor(null), inv())} />;
   return (
     <Modal open size="lg" title={`${c.name} сыныбы`} onClose={onClose} footer={<button className="btn" onClick={onClose}>Жабу</button>}>
       <div className="stack">
@@ -175,6 +177,7 @@ function ClassEditor({ c, teachers, onClose }: { c: ClassRow; teachers: Teacher[
               <tr>
                 <th>Пән</th>
                 <th>Мұғалім</th>
+                <th>Топтар</th>
               </tr>
             </thead>
             <tbody>
@@ -190,11 +193,24 @@ function ClassEditor({ c, teachers, onClose }: { c: ClassRow; teachers: Teacher[
                       ))}
                     </select>
                   </td>
+                  <td>
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      {s.groups.map((g) => (
+                        <Badge key={g.id} tone="acc">
+                          {g.name} · {g.size}
+                          {g.teacher ? ` · ${g.teacher.split(' ')[0]}` : ''}
+                        </Badge>
+                      ))}
+                      <button className="btn ghost" onClick={() => setGroupsFor(s)}>
+                        {s.groups.length ? 'Өзгерту' : 'Топқа бөлу'}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!c.subjects.length && (
                 <tr>
-                  <td colSpan={2} className="muted">
+                  <td colSpan={3} className="muted">
                     Пән тағайындалмаған
                   </td>
                 </tr>
@@ -230,6 +246,157 @@ function ClassEditor({ c, teachers, onClose }: { c: ClassRow; teachers: Teacher[
           </button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+type EditGroup = { id?: number; name: string; teacherId: number | null; studentIds: number[]; hasData?: boolean };
+
+/** Пән бойынша сыныпты топтарға бөлу: топ атауы, мұғалімі және оқушылар құрамы. */
+function GroupsEditor({ c, s, teachers, onClose }: { c: ClassRow; s: ClassRow['subjects'][number]; teachers: Teacher[]; onClose: () => void }) {
+  const toast = useToast();
+  const q = useQuery({
+    queryKey: ['class-groups', c.id, s.subjectId],
+    queryFn: () => api.get<{ groups: EditGroup[]; students: { id: number; fullName: string; gender: 'M' | 'F' }[] }>(`/classes/${c.id}/groups`, { subjectId: s.subjectId }),
+  });
+  const [groups, setGroups] = useState<EditGroup[] | null>(null);
+  const list = groups ?? q.data?.groups ?? [];
+  const students = q.data?.students ?? [];
+  const save = useMutation({
+    mutationFn: (gs: EditGroup[]) => api.put<{ groups: EditGroup[] }>(`/classes/${c.id}/groups`, { subjectId: s.subjectId, groups: gs.map(({ id, name, teacherId, studentIds }) => ({ id, name, teacherId, studentIds })) }),
+    onSuccess: (x) => {
+      setGroups(x.groups);
+      toast(x.groups.length ? 'Топтар сақталды' : 'Топқа бөлу алынып тасталды');
+    },
+    onError: (e) => toast(e instanceof ApiError ? e.message : 'Қате', 'error'),
+  });
+  const split = (by: 'alpha' | 'gender') => {
+    const ids = students.map((x) => x.id);
+    const half = Math.ceil(ids.length / 2);
+    const parts = by === 'gender' ? [students.filter((x) => x.gender === 'M').map((x) => x.id), students.filter((x) => x.gender === 'F').map((x) => x.id)] : [ids.slice(0, half), ids.slice(half)];
+    setGroups([
+      { name: by === 'gender' ? 'Ұлдар' : '1-топ', teacherId: s.teacherId, studentIds: parts[0] },
+      { name: by === 'gender' ? 'Қыздар' : '2-топ', teacherId: null, studentIds: parts[1] },
+    ]);
+  };
+  const upd = (i: number, patch: Partial<EditGroup>) => setGroups(list.map((g, j) => (j === i ? { ...g, ...patch } : g)));
+  const moveStudent = (sid: number, to: number) => setGroups(list.map((g, j) => ({ ...g, studentIds: j === to ? [...g.studentIds.filter((x) => x !== sid), sid] : g.studentIds.filter((x) => x !== sid) })));
+  const groupOf = (sid: number) => list.findIndex((g) => g.studentIds.includes(sid));
+  const unassigned = students.filter((x) => groupOf(x.id) < 0).length;
+  const dirty = groups != null && JSON.stringify(groups) !== JSON.stringify(q.data?.groups);
+  return (
+    <Modal
+      open
+      size="lg"
+      title={`${c.name} · ${s.subject}: топтар`}
+      onClose={onClose}
+      footer={
+        <>
+          {!!q.data?.groups.length && (
+            <button className="btn ghost c-bad" style={{ marginRight: 'auto' }} disabled={save.isPending} onClick={() => save.mutate([])}>
+              Бөлуді алып тастау
+            </button>
+          )}
+          <button className="btn" onClick={onClose}>
+            Жабу
+          </button>
+          <button className="btn primary" disabled={!dirty || save.isPending || list.length === 1} onClick={() => save.mutate(list)}>
+            {save.isPending && <Spinner />} Сақтау
+          </button>
+        </>
+      }
+    >
+      {q.isLoading ? (
+        <Spinner block />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : !list.length ? (
+        <Empty>
+          <div style={{ marginBottom: 10 }}>Бұл пәнде сынып топқа бөлінбеген. Әр топтың журналы, БЖБ/ТЖБ-сы мен мұғалімі бөлек болады.</div>
+          <div className="row" style={{ justifyContent: 'center' }}>
+            <button className="btn primary" onClick={() => split('alpha')}>
+              2 топқа бөлу (тізім бойынша)
+            </button>
+            <button className="btn" onClick={() => split('gender')}>
+              Ұлдар / қыздар
+            </button>
+          </div>
+        </Empty>
+      ) : (
+        <div className="stack">
+          <div className="grid-auto" style={{ gap: 10 }}>
+            {list.map((g, i) => (
+              <div key={i} className="card" style={{ padding: 12 }}>
+                <div className="row" style={{ alignItems: 'flex-end' }}>
+                  <Field label="Атауы">
+                    <input className="input" value={g.name} maxLength={40} onChange={(e) => upd(i, { name: e.target.value })} style={{ width: 120 }} />
+                  </Field>
+                  <Field label="Мұғалім">
+                    <select className="select" value={g.teacherId ?? ''} onChange={(e) => upd(i, { teacherId: e.target.value ? Number(e.target.value) : null })}>
+                      <option value="">— тағайындалмаған —</option>
+                      {teachers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {list.length > 2 && !g.hasData && (
+                    <button className="btn ghost c-bad" onClick={() => setGroups(list.filter((_, j) => j !== i))} aria-label={`${g.name} жою`}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+                  <b className="mono">{g.studentIds.length}</b> оқушы{g.hasData ? ' · журнал/БЖБ деректері бар' : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="row">
+            {list.length < 6 && (
+              <button className="btn ghost" onClick={() => setGroups([...list, { name: `${list.length + 1}-топ`, teacherId: null, studentIds: [] }])}>
+                + Топ қосу
+              </button>
+            )}
+            {unassigned > 0 && <span className="c-warn">{unassigned} оқушы топқа кірмеген</span>}
+          </div>
+          <div className="table-wrap" style={{ maxHeight: 360 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>№</th>
+                  <th>Оқушы</th>
+                  {list.map((g, i) => (
+                    <th key={i} className="center" style={{ width: 90 }}>
+                      {g.name || `${i + 1}`}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((st, n) => {
+                  const gi = groupOf(st.id);
+                  return (
+                    <tr key={st.id}>
+                      <td className="mono muted">{n + 1}</td>
+                      <td>{st.fullName}</td>
+                      {list.map((g, i) => (
+                        <td key={i} className="center">
+                          <input type="radio" name={`g-${st.id}`} checked={gi === i} onChange={() => moveStudent(st.id, i)} aria-label={`${st.fullName}: ${g.name}`} />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            Пәннің негізгі мұғалімі ({s.teacher}) мен әкімшілік барлық топты көреді; топ мұғалімі тек өз тобының журналы мен БЖБ/ТЖБ-сын жүргізеді.
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

@@ -16,19 +16,21 @@ type Draft = { absent: boolean; score: string; criteria: string[] };
 const toNum = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
 
 export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
-  const { ref, quarterId, setQuarterId, year, subjectsOf } = useReference();
+  const { ref, quarterId, setQuarterId, year, subjectsOf, groupsOf } = useReference();
   const { can } = useAuth();
   const nav = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
-  const [s, set] = useUrlState({ classId: 0, subjectId: 0, id: 0 });
+  const [s, set] = useUrlState({ classId: 0, subjectId: 0, groupId: 0, id: 0 });
   const classId = s.classId || ref.classes.find((c) => c.isHomeroom)?.id || ref.classes[0]?.id || 0;
   const subjects = subjectsOf(classId);
   const subjectId = subjects.some((x) => x.id === s.subjectId) ? s.subjectId : (subjects[0]?.id ?? 0);
   const canWrite = can(PERM.ASSESS) && ref.classSubjects.some((x) => x.classId === classId && x.subjectId === subjectId);
 
-  const listKey = { type, classId, subjectId, quarterId };
+  const groups = groupsOf(classId, subjectId);
+  const groupId = groups.length ? (groups.some((g) => g.id === s.groupId) ? s.groupId : groups[0].id) : undefined;
+  const listKey = { type, classId, subjectId, quarterId, groupId };
   const list = useQuery({ queryKey: ['assessments', listKey], queryFn: () => api.get<AssessmentListItem[]>('/assessments', listKey), enabled: !!classId && !!subjectId });
   const id = list.data?.some((a) => a.id === s.id) ? s.id : (list.data?.[list.data.length - 1]?.id ?? 0);
   const detail = useQuery({ queryKey: ['assessment', id], queryFn: () => api.get<AssessmentDetail>(`/assessments/${id}`), enabled: !!id });
@@ -55,6 +57,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
   };
 
   const a = detail.data;
+  const tjbTaken = type === 'TJB' && !!list.data?.some((x) => (x.groupId ?? undefined) === groupId);
   return (
     <div>
       <div className="page-head">
@@ -76,7 +79,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
         )}
         {a && can(PERM.EXPORT) && <ExportMenu onExport={exportFile} />}
         {canWrite && (
-          <button className="btn" onClick={() => setForm('new')} disabled={type === 'TJB' && !!list.data?.length} title={type === 'TJB' && list.data?.length ? 'Бір тоқсанға бір ТЖБ' : undefined}>
+          <button className="btn" onClick={() => setForm('new')} disabled={tjbTaken} title={tjbTaken ? 'Бір тоқсанға (топқа) бір ТЖБ' : undefined}>
             + {TYPE_KK[type]} құру
           </button>
         )}
@@ -84,7 +87,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
 
       <div className="filters" style={{ alignItems: 'flex-end' }}>
         <Field label="Сынып">
-          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0, id: 0 })}>
+          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0, groupId: 0, id: 0 })}>
             {ref.classes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -93,7 +96,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
           </select>
         </Field>
         <Field label="Пән">
-          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value), id: 0 })}>
+          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value), groupId: 0, id: 0 })}>
             {subjects.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.name}
@@ -101,6 +104,17 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
             ))}
           </select>
         </Field>
+        {!!groups.length && (
+          <Field label="Топ">
+            <select className="select" value={groupId} onChange={(e) => set({ groupId: Number(e.target.value), id: 0 })}>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Тоқсан">
           <select className="select" value={quarterId} onChange={(e) => (setQuarterId(Number(e.target.value)), set({ id: 0 }))}>
             {year.quarters.map((q) => (
@@ -115,7 +129,8 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
             <select className="select" value={id} onChange={(e) => set({ id: Number(e.target.value) })}>
               {list.data.map((x) => (
                 <option key={x.id} value={x.id}>
-                  {x.title} {x.results ? `· ${pct(x.avgPct)}` : '· енгізілмеген'}
+                  {x.title}
+                  {groups.length && !x.groupId ? ' · бүкіл сынып' : ''} {x.results ? `· ${pct(x.avgPct)}` : '· енгізілмеген'}
                 </option>
               ))}
             </select>
@@ -168,6 +183,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
           classId={classId}
           subjectId={subjectId}
           quarterId={quarterId}
+          groupId={groupId}
           locked={form === 'edit' && !!a?.entered}
           onClose={() => setForm(null)}
           onSaved={(x) => {
@@ -660,6 +676,7 @@ function AssessmentForm({
   classId,
   subjectId,
   quarterId,
+  groupId,
   locked,
   onClose,
   onSaved,
@@ -669,6 +686,7 @@ function AssessmentForm({
   classId: number;
   subjectId: number;
   quarterId: number;
+  groupId?: number;
   locked: boolean;
   onClose: () => void;
   onSaved: (a: AssessmentDetail) => void;
@@ -708,6 +726,7 @@ function AssessmentForm({
       classId,
       subjectId,
       quarterId,
+      groupId,
       title: title.trim(),
       section: section.trim() || null,
       date: date || null,

@@ -121,6 +121,7 @@ model School {
   attendanceReason AttendanceReason[]
   gradeColumns     GradeColumn[]
   quarterGrades    QuarterGrade[]
+  subjectGroups    SubjectGroup[]
 
   @@map("schools")
 }
@@ -191,6 +192,7 @@ model Teacher {
   assessments    Assessment[]
   quarterReports QuarterReport[]
   gradeColumns   GradeColumn[]
+  subjectGroups  SubjectGroup[]
 
   @@index([schoolId])
   @@map("teachers")
@@ -255,6 +257,7 @@ model Class {
   quarterReports  QuarterReport[]
   gradeColumns    GradeColumn[]
   quarterGrades   QuarterGrade[]
+  subjectGroups   SubjectGroup[]
 
   @@unique([schoolId, schoolYearId, name])
   @@map("classes")
@@ -273,6 +276,7 @@ model Subject {
   quarterReports QuarterReport[]
   gradeColumns   GradeColumn[]
   quarterGrades  QuarterGrade[]
+  subjectGroups  SubjectGroup[]
 
   @@unique([schoolId, name])
   @@map("subjects")
@@ -364,6 +368,7 @@ model Student {
   assessmentResults AssessmentResult[]
   grades            Grade[]
   quarterGrades     QuarterGrade[]
+  groupMemberships  SubjectGroupMember[]
 
   @@unique([schoolId, studentCode])
   @@unique([schoolId, iinHash])
@@ -477,6 +482,8 @@ model Assessment {
   subjectId Int            @map("subject_id")
   quarterId Int            @map("quarter_id")
   teacherId Int?           @map("teacher_id")
+  /// Сынып пән бойынша топтарға бөлінсе — қай топқа арналған.
+  groupId   Int?           @map("group_id")
   section   String?
   title     String
   maxScore  Decimal        @map("max_score") @db.Decimal(6, 2)
@@ -489,6 +496,7 @@ model Assessment {
   subject   Subject               @relation(fields: [subjectId], references: [id])
   quarter   Quarter               @relation(fields: [quarterId], references: [id])
   teacher   Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  group     SubjectGroup?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
   criteria  AssessmentCriterion[]
   results   AssessmentResult[]
 
@@ -546,6 +554,46 @@ model AssessmentCriterionResult {
 
 // ───────────────────────── Journal (ағымдағы бағалар, тоқсандық баға) ─────────────────────────
 
+/// Пән бойынша сыныпты топтарға бөлу (мысалы, ағылшын тілі: 1-топ, 2-топ). Әр топтың өз мұғалімі болады.
+model SubjectGroup {
+  id           Int      @id @default(autoincrement())
+  schoolId     Int      @map("school_id")
+  classId      Int      @map("class_id")
+  subjectId    Int      @map("subject_id")
+  name         String
+  teacherId    Int?     @map("teacher_id")
+  order        Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  school       School               @relation(fields: [schoolId], references: [id])
+  class        Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject              @relation(fields: [subjectId], references: [id])
+  teacher      Teacher?             @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  members      SubjectGroupMember[]
+  gradeColumns GradeColumn[]
+  assessments  Assessment[]
+
+  @@unique([classId, subjectId, name])
+  @@index([teacherId])
+  @@map("subject_groups")
+}
+
+/// Оқушы бір сыныптың бір пәні бойынша тек бір топта болады.
+model SubjectGroupMember {
+  id        Int @id @default(autoincrement())
+  groupId   Int @map("group_id")
+  studentId Int @map("student_id")
+  classId   Int @map("class_id")
+  subjectId Int @map("subject_id")
+
+  group   SubjectGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, subjectId, studentId])
+  @@index([groupId])
+  @@map("subject_group_members")
+}
+
 /// Журнал бағаны: бір сабақ күні (немесе тапсырма) бойынша ағымдағы бағалар.
 model GradeColumn {
   id        Int      @id @default(autoincrement())
@@ -554,6 +602,7 @@ model GradeColumn {
   subjectId Int      @map("subject_id")
   quarterId Int      @map("quarter_id")
   teacherId Int?     @map("teacher_id")
+  groupId   Int?     @map("group_id")
   date      DateTime @db.Date
   topic     String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -563,7 +612,8 @@ model GradeColumn {
   class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
   subject Subject  @relation(fields: [subjectId], references: [id])
   quarter Quarter  @relation(fields: [quarterId], references: [id])
-  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  teacher Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  group   SubjectGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
   grades  Grade[]
 
   @@index([classId, subjectId, quarterId])

@@ -10,6 +10,7 @@ interface RefCtx {
   quarter: QuarterRef;
   year: Reference['years'][number];
   subjectsOf: (classId?: number | null) => { id: number; name: string }[];
+  groupsOf: (classId: number, subjectId: number) => Reference['groups'];
   className: (id?: number | null) => string;
   subjectName: (id?: number | null) => string;
 }
@@ -44,6 +45,7 @@ export function ReferenceProvider({ children }: { children: ReactNode }) {
         const ids = new Set(ref.classSubjects.filter((c) => c.classId === classId).map((c) => c.subjectId));
         return ref.subjects.filter((s) => ids.has(s.id));
       },
+      groupsOf: (classId, subjectId) => ref.groups.filter((g) => g.classId === classId && g.subjectId === subjectId),
       className: (id) => ref.classes.find((c) => c.id === id)?.name ?? '—',
       subjectName: (id) => ref.subjects.find((s) => s.id === id)?.name ?? '—',
     };

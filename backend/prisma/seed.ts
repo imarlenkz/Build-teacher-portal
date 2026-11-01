@@ -585,6 +585,28 @@ async function demo() {
       await prisma.quarterReport.create({ data: { schoolId: school.id, quarterId: curQ.id, classId: classIds[cls], subjectId: subjects[subj], teacherId: teacherIds['akhmetova'], status: 'SUBMITTED', submittedAt: new Date() } });
     }
   }
+  // Пән топтары: информатика сабағында сынып екі топқа бөлінеді, әр топтың өз мұғалімі бар.
+  for (const k of Object.keys(assignmentIds).filter((x) => x.endsWith('|Информатика'))) {
+    const [cls] = k.split('|');
+    const t1 = teacherFor(cls, 'Информатика');
+    const t2 = t1 === 'abenov' ? 'saparova' : 'abenov';
+    const members = students.filter((s) => s.cls === cls && !leftIds.has(s.id));
+    const half = Math.ceil(members.length / 2);
+    for (const [i, part] of [members.slice(0, half), members.slice(half)].entries()) {
+      await prisma.subjectGroup.create({
+        data: {
+          schoolId: school.id,
+          classId: classIds[cls],
+          subjectId: subjects['Информатика'],
+          name: `${i + 1}-топ`,
+          order: i,
+          teacherId: teacherIds[i === 0 ? t1 : t2],
+          members: { create: part.map((s) => ({ studentId: s.id, classId: classIds[cls], subjectId: subjects['Информатика'] })) },
+        },
+      });
+    }
+  }
+  console.log('✓ subject groups (Информатика: 1-топ / 2-топ)');
   console.log('✓ demo data ready. Logins: admin / bekova / akhmetova (password: DEMO_PASSWORD or Ustaz2026!)');
 }
 

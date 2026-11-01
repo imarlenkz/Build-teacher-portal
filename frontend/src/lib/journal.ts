@@ -37,6 +37,8 @@ export interface Journal {
   className: string;
   subjectId: number;
   subject: string;
+  groupId: number | null;
+  groupName: string | null;
   quarterId: number;
   quarter: number;
   startDate: string;
@@ -56,6 +58,8 @@ export interface JournalYear {
   className: string;
   subjectId: number;
   subject: string;
+  groupId: number | null;
+  groupName: string | null;
   quarters: { id: number; number: number }[];
   rows: { studentId: number; fullName: string; studentCode: string; left: boolean; marks: (number | null)[]; year: number | null; complete: boolean }[];
   distribution: number[];

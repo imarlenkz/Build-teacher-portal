@@ -8,11 +8,14 @@ export class JournalQuery {
   @Type(() => Number) @IsInt() classId: number;
   @Type(() => Number) @IsInt() subjectId: number;
   @Type(() => Number) @IsInt() quarterId: number;
+  /** Пән топтарға бөлінсе — міндетті. */
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number | null;
 }
 
 export class JournalYearQuery {
   @Type(() => Number) @IsInt() classId: number;
   @Type(() => Number) @IsInt() subjectId: number;
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number | null;
 }
 
 export class JournalExportQuery extends JournalQuery {
@@ -28,6 +31,7 @@ export class CreateColumnInput extends ColumnInput {
   @Type(() => Number) @IsInt() classId: number;
   @Type(() => Number) @IsInt() subjectId: number;
   @Type(() => Number) @IsInt() quarterId: number;
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number | null;
 }
 
 export class MarkInput {

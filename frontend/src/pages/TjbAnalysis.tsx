@@ -19,7 +19,7 @@ export default function TjbAnalysis() {
   const { ref, quarterId, setQuarterId, year, subjectsOf } = useReference();
   const { can } = useAuth();
   const toast = useToast();
-  const [s, set] = useUrlState({ classId: 0, subjectId: 0, quarterId: 0 });
+  const [s, set] = useUrlState({ classId: 0, subjectId: 0, quarterId: 0, id: 0 });
   // Хабарламадан келген сілтемедегі тоқсанды қолдану.
   useEffect(() => {
     if (!s.quarterId) return;
@@ -38,7 +38,9 @@ export default function TjbAnalysis() {
   const subjectId = subjects.some((x) => x.id === wantSubject) ? wantSubject : (subjects[0]?.id ?? 0);
   const [view, setView] = useState<'all' | 'low'>('all');
 
-  const tjb = overview.data?.find((a) => a.classId === classId && a.subjectId === subjectId);
+  // Пән топтарға бөлінсе, әр топтың өз ТЖБ-сы болады.
+  const tjbs = (overview.data ?? []).filter((a) => a.classId === classId && a.subjectId === subjectId);
+  const tjb = tjbs.find((a) => a.id === s.id) ?? tjbs[0];
   const detail = useQuery({ queryKey: ['assessment', tjb?.id], queryFn: () => api.get<AssessmentDetail>(`/assessments/${tjb!.id}`), enabled: !!tjb });
   const a = detail.data;
 
@@ -118,7 +120,7 @@ export default function TjbAnalysis() {
       </div>
       <div className="filters" style={{ alignItems: 'flex-end' }}>
         <Field label="Сынып">
-          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0 })}>
+          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0, id: 0 })}>
             {ref.classes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -127,7 +129,7 @@ export default function TjbAnalysis() {
           </select>
         </Field>
         <Field label="Пән">
-          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value) })}>
+          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value), id: 0 })}>
             {subjects.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.name}
@@ -135,6 +137,17 @@ export default function TjbAnalysis() {
             ))}
           </select>
         </Field>
+        {tjbs.length > 1 && (
+          <Field label="Топ">
+            <select className="select" value={tjb?.id} onChange={(e) => set({ id: Number(e.target.value) })}>
+              {tjbs.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.groupName ?? 'Бүкіл сынып'}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Тоқсан">
           <select className="select" value={quarterId} onChange={(e) => setQuarterId(Number(e.target.value))}>
             {year.quarters.map((q) => (
@@ -261,7 +274,7 @@ export default function TjbAnalysis() {
                   key={x.id}
                   className="bar-row"
                   style={{ background: x.classId === classId && x.subjectId === subjectId ? 'var(--accs)' : 'none', border: 0, borderRadius: 6, padding: '4px 6px', textAlign: 'left', cursor: 'pointer', color: 'inherit' }}
-                  onClick={() => set({ classId: x.classId, subjectId: x.subjectId })}
+                  onClick={() => set({ classId: x.classId, subjectId: x.subjectId, id: x.id })}
                 >
                   <span>
                     {x.className} · {x.subject}
