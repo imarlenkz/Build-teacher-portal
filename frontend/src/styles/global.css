@@ -20,7 +20,8 @@
   --rail: #101a27;
   --font: 'Nunito Sans Variable', 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --display: 'Nunito Variable', 'Nunito', 'Nunito Sans Variable', system-ui, sans-serif;
-  --mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  /* JetBrains Mono-да жоқ қазақ әріптері Nunito Sans-тан алынады. */
+  --mono: 'JetBrains Mono Variable', 'Nunito Sans Variable', ui-monospace, Menlo, monospace;
   --overlay: rgba(12, 15, 14, 0.5);
   --r-card: 16px;
   --r-ctl: 10px;
@@ -1745,9 +1746,8 @@ body {
   height: 26px;
   padding: 0 11px;
   border-radius: 999px;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 600;
 }
 .user-box {
   height: 38px;
@@ -1791,10 +1791,11 @@ button.kpi:hover {
 .tbl th,
 .field > label,
 .field > .label {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  /* JetBrains Mono-да қазақ әріптері (Қ, Ұ, Ғ, Ә…) жоқ — белгілер Nunito Sans-пен жазылады. */
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .kpi-value {
