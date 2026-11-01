@@ -26,6 +26,9 @@ class GradingInput {
   @Type(() => Number) @IsInt() @Min(0) @Max(100) foWeight: number;
   @Type(() => Number) @IsInt() @Min(0) @Max(100) bjbWeight: number;
   @Type(() => Number) @IsInt() @Min(0) @Max(100) tjbWeight: number;
+  /** 2–4 сыныптар: ФО + аралық бағалау. */
+  @Type(() => Number) @IsInt() @Min(0) @Max(100) primaryFoWeight: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(100) interimWeight: number;
 }
 class MeInput {
   @IsOptional() @IsIn(['kk', 'ru', 'en']) locale?: string;
@@ -82,10 +85,12 @@ class SettingsService {
   }
 
   async setGrading(user: AuthUser, dto: GradingInput, meta: RequestMeta) {
-    if (dto.foWeight + dto.bjbWeight + dto.tjbWeight !== 100) throw new BadRequestException('Салмақтардың қосындысы 100% болуы керек');
+    if (dto.foWeight + dto.bjbWeight + dto.tjbWeight !== 100) throw new BadRequestException('5–11 сыныптар: салмақтардың қосындысы 100% болуы керек');
+    if (dto.primaryFoWeight + dto.interimWeight !== 100) throw new BadRequestException('2–4 сыныптар: салмақтардың қосындысы 100% болуы керек');
     const before = await this.levels.settings(user.schoolId);
-    const fmt = (s: { foWeight: number; bjbWeight: number; tjbWeight: number }) => `ФО ${s.foWeight}% · БЖБ ${s.bjbWeight}% · ТЖБ ${s.tjbWeight}%`;
-    const data = { foWeight: dto.foWeight, bjbWeight: dto.bjbWeight, tjbWeight: dto.tjbWeight };
+    const fmt = (s: { foWeight: number; bjbWeight: number; tjbWeight: number; primaryFoWeight: number; interimWeight: number }) =>
+      `ФО ${s.foWeight}% · БЖБ ${s.bjbWeight}% · ТЖБ ${s.tjbWeight}%; 2–4 сынып: ФО ${s.primaryFoWeight}% · аралық ${s.interimWeight}%`;
+    const data = { foWeight: dto.foWeight, bjbWeight: dto.bjbWeight, tjbWeight: dto.tjbWeight, primaryFoWeight: dto.primaryFoWeight, interimWeight: dto.interimWeight };
     await this.prisma.$transaction(async (tx) => {
       await tx.schoolSettings.upsert({ where: { schoolId: user.schoolId }, create: { schoolId: user.schoolId, ...data }, update: data });
       await this.audit.record(user, { action: 'Тоқсандық баға салмағын өзгертті', entity: 'school_settings', summary: 'Тоқсандық баға формуласы', before: fmt(before), after: fmt(dto) }, meta, tx);

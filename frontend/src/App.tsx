@@ -63,6 +63,7 @@ function Root() {
                   <Route path="journal" element={<Journal />} />
                   <Route path="bjb" element={<Assessments type="BJB" />} />
                   <Route path="tjb" element={<Assessments type="TJB" />} />
+                  <Route path="aralyk" element={<Assessments type="ARALYK" />} />
                   <Route path="tjb-analysis" element={<TjbAnalysis />} />
                   <Route path="report" element={<QuarterReport />} />
                   <Route path="analytics" element={<Analytics />} />

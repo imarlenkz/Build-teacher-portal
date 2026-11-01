@@ -26,6 +26,8 @@ export class LevelsService {
         foWeight: 25,
         bjbWeight: 25,
         tjbWeight: 50,
+        primaryFoWeight: 50,
+        interimWeight: 50,
         updatedAt: new Date(),
       }
     );

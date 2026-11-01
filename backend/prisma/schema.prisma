@@ -56,6 +56,7 @@ enum AttendanceStatus {
 enum AssessmentType {
   BJB // БЖБ — бөлім бойынша жиынтық бағалау
   TJB // ТЖБ — тоқсан бойынша жиынтық бағалау
+  ARALYK // Аралық бағалау — 2–4 сыныптарда БЖБ/ТЖБ орнына
 }
 
 enum ReportStatus {
@@ -694,6 +695,9 @@ model SchoolSettings {
   foWeight            Int     @default(25) @map("fo_weight")
   bjbWeight           Int     @default(25) @map("bjb_weight")
   tjbWeight           Int     @default(50) @map("tjb_weight")
+  /// 2–4 сыныптар (аралық бағалау): ФО және аралық бағалау салмақтары (%).
+  primaryFoWeight     Int     @default(50) @map("primary_fo_weight")
+  interimWeight       Int     @default(50) @map("interim_weight")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)

@@ -34,7 +34,7 @@ interface AttMonth {
 interface AssessRow {
   id: number;
   assessmentId: number;
-  type: 'BJB' | 'TJB';
+  type: 'BJB' | 'TJB' | 'ARALYK';
   title: string;
   section: string | null;
   subject: string;
@@ -369,7 +369,7 @@ function AssessHistory({ id }: { id: number }) {
               <td className="mono muted">{r.schoolYear}</td>
               <td>{['I', 'II', 'III', 'IV'][r.quarter - 1]}</td>
               <td>
-                <Badge tone={r.type === 'TJB' ? 'vio' : 'acc'}>{r.type === 'TJB' ? 'ТЖБ' : 'БЖБ'}</Badge>
+                <Badge tone={r.type === 'BJB' ? 'acc' : 'vio'}>{r.type === 'TJB' ? 'ТЖБ' : r.type === 'ARALYK' ? 'Аралық' : 'БЖБ'}</Badge>
               </td>
               <td>{r.subject}</td>
               <td>

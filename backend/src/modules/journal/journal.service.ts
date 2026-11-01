@@ -8,7 +8,7 @@ import { LevelsService } from '../core/levels.service';
 import { AuditService } from '../audit/audit.service';
 import { fmtDate, fmtDot, toDate } from '../../common/utils/dates';
 import { round1 } from '../../common/utils/stats';
-import { computeQuarter, GradeWeights, yearMark } from '../../common/utils/grades';
+import { computeQuarter, GradeWeights, usesInterim, weightsFor, yearMark } from '../../common/utils/grades';
 import { ColumnInput, CreateColumnInput, JournalQuery, SaveFinalsInput, SaveMarksInput } from './journal.dto';
 
 @Injectable()
@@ -21,9 +21,9 @@ export class JournalService {
     private readonly cache: CacheService,
   ) {}
 
-  async weights(schoolId: number): Promise<GradeWeights> {
-    const s = await this.levels.settings(schoolId);
-    return { fo: s.foWeight, bjb: s.bjbWeight, tjb: s.tjbWeight };
+  /** Салмақтар сынып параллеліне тәуелді: 2–4 сыныптарда ФО + аралық бағалау. */
+  async weights(schoolId: number, grade: number): Promise<GradeWeights> {
+    return weightsFor(grade, await this.levels.settings(schoolId));
   }
 
   /** Сынып, пән және тоқсанның бір оқу жылына жататынын тексереді. */
@@ -81,7 +81,7 @@ export class JournalService {
       this.prisma.assessment.findMany({ where, include: { results: true }, orderBy: [{ type: 'asc' }, { date: 'asc' }, { createdAt: 'asc' }] }),
       this.prisma.quarterGrade.findMany({ where: base }),
       this.levels.get(user.schoolId),
-      this.weights(user.schoolId),
+      this.weights(user.schoolId, cls.grade),
       this.canWrite(user, q),
     ]);
     const linked = new Set<number>([
@@ -92,11 +92,16 @@ export class JournalService {
     const students = await this.students(user, q.classId, q.subjectId, group?.id ?? null, linked);
     const bjb = assessments.filter((a) => a.type === 'BJB');
     // Топ көрінісінде топтың ТЖБ-сы басым; болмаса бүкіл сыныптың ТЖБ-сы.
+    const interim = assessments.filter((a) => a.type === 'ARALYK');
     const tjb = assessments.filter((a) => a.type === 'TJB').sort((a, b) => (b.groupId ? 1 : 0) - (a.groupId ? 1 : 0))[0] ?? null;
 
     const rows = students.map((s) => {
       const marks = columns.map((c) => c.grades.find((g) => g.studentId === s.id)?.value ?? null);
       const bjbRes = bjb.map((a) => {
+        const r = a.results.find((x) => x.studentId === s.id);
+        return r ? { score: Number(r.score), max: Number(a.maxScore), absent: r.absent, pct: r.absent ? null : round1(Number(r.percent)) } : null;
+      });
+      const interimRes = interim.map((a) => {
         const r = a.results.find((x) => x.studentId === s.id);
         return r ? { score: Number(r.score), max: Number(a.maxScore), absent: r.absent, pct: r.absent ? null : round1(Number(r.percent)) } : null;
       });
@@ -107,6 +112,7 @@ export class JournalService {
           fo: marks.filter((m): m is number => m != null),
           bjb: bjbRes.filter((r): r is NonNullable<typeof r> => !!r && !r.absent).map((r) => ({ score: r.score, max: r.max })),
           tjb: tjbRes && !tjbRes.absent ? { score: tjbRes.score, max: tjbRes.max } : null,
+          interim: interimRes.filter((r): r is NonNullable<typeof r> => !!r && !r.absent).map((r) => ({ score: r.score, max: r.max })),
         },
         w,
         lv,
@@ -122,6 +128,7 @@ export class JournalService {
         foAvg: computed.foPct == null ? null : round1((computed.foPct / 100) * 10),
         bjb: bjbRes.map((r) => (r ? { score: r.score, absent: r.absent, pct: r.pct } : null)),
         tjb: tjbRes ? { score: tjbRes.score, absent: tjbRes.absent, pct: tjbRes.pct } : null,
+        interim: interimRes.map((r) => (r ? { score: r.score, absent: r.absent, pct: r.pct } : null)),
         computed,
         final: f ? { mark: f.mark, computedPct: f.computedPct == null ? null : Number(f.computedPct), updatedAt: f.updatedAt.toISOString() } : null,
       };
@@ -139,11 +146,14 @@ export class JournalService {
       startDate: fmtDate(quarter.startDate),
       endDate: fmtDate(quarter.endDate),
       canWrite,
+      /** 2–4 сыныптар: БЖБ/ТЖБ орнына аралық бағалау. */
+      primary: usesInterim(cls.grade),
       weights: w,
       levels: lv,
       columns: columns.map((c) => ({ id: c.id, date: fmtDate(c.date)!, topic: c.topic })),
       bjb: bjb.map((a) => ({ id: a.id, title: a.title, maxScore: Number(a.maxScore) })),
       tjb: tjb ? { id: tjb.id, title: tjb.title, maxScore: Number(tjb.maxScore) } : null,
+      interim: interim.map((a) => ({ id: a.id, title: a.title, maxScore: Number(a.maxScore) })),
       rows,
       finalsCount: finals.length,
     };

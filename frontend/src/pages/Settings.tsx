@@ -206,23 +206,26 @@ function SchoolCard() {
   );
 }
 
-type SchoolSettings = { attendanceThreshold: number; foWeight: number; bjbWeight: number; tjbWeight: number };
+type SchoolSettings = { attendanceThreshold: number; foWeight: number; bjbWeight: number; tjbWeight: number; primaryFoWeight: number; interimWeight: number };
 
-/** Тоқсандық баға формуласының салмақтары (журнал бетінде қолданылады). */
 function GradingCard() {
   const qc = useQueryClient();
   const toast = useToast();
   const q = useQuery({ queryKey: ['settings'], queryFn: () => api.get<{ levels: Level[]; settings: SchoolSettings }>('/settings') });
-  const [w, setW] = useState({ fo: '', bjb: '', tjb: '' });
+  const [w, setW] = useState({ fo: '', bjb: '', tjb: '', pfo: '', interim: '' });
   useEffect(() => {
-    if (q.data) setW({ fo: String(q.data.settings.foWeight), bjb: String(q.data.settings.bjbWeight), tjb: String(q.data.settings.tjbWeight) });
+    if (q.data) {
+      const x = q.data.settings;
+      setW({ fo: String(x.foWeight), bjb: String(x.bjbWeight), tjb: String(x.tjbWeight), pfo: String(x.primaryFoWeight), interim: String(x.interimWeight) });
+    }
   }, [q.data]);
-  const n = { fo: Number(w.fo), bjb: Number(w.bjb), tjb: Number(w.tjb) };
+  const n = { fo: Number(w.fo), bjb: Number(w.bjb), tjb: Number(w.tjb), pfo: Number(w.pfo), interim: Number(w.interim) };
   const sum = n.fo + n.bjb + n.tjb;
+  const psum = n.pfo + n.interim;
   const s = q.data?.settings;
-  const same = s && n.fo === s.foWeight && n.bjb === s.bjbWeight && n.tjb === s.tjbWeight;
+  const same = s && n.fo === s.foWeight && n.bjb === s.bjbWeight && n.tjb === s.tjbWeight && n.pfo === s.primaryFoWeight && n.interim === s.interimWeight;
   const save = useMutation({
-    mutationFn: () => api.put('/settings/grading', { foWeight: n.fo, bjbWeight: n.bjb, tjbWeight: n.tjb }),
+    mutationFn: () => api.put('/settings/grading', { foWeight: n.fo, bjbWeight: n.bjb, tjbWeight: n.tjb, primaryFoWeight: n.pfo, interimWeight: n.interim }),
     onSuccess: () => {
       toast('Тоқсандық баға формуласы сақталды');
       ['settings', 'journal'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -234,17 +237,25 @@ function GradingCard() {
       <input className="input mono" style={{ width: 80 }} inputMode="numeric" value={w[k]} onChange={(e) => setW({ ...w, [k]: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
     </Field>
   );
+  const hint = { fontSize: 12.5, fontWeight: 600, marginTop: 4 } as const;
   return (
-    <Card title="Тоқсандық баға формуласы" sub="Журналдағы тоқсан пайызы осы салмақтармен есептеледі (әдепкі: ФО 25 · БЖБ 25 · ТЖБ 50)">
+    <Card title="Тоқсандық баға формуласы" sub="Журналдағы тоқсан пайызы осы салмақтармен есептеледі">
+      <div className="muted" style={hint}>5–11 сыныптар (әдепкі: ФО 25 · БЖБ 25 · ТЖБ 50)</div>
       <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
         {input('fo', 'ФО')}
         {input('bjb', 'БЖБ')}
         {input('tjb', 'ТЖБ')}
-        <button className="btn primary" disabled={sum !== 100 || save.isPending || same} onClick={() => save.mutate()} style={{ marginBottom: 2 }}>
+      </div>
+      {sum !== 100 && <div className="c-bad" style={{ fontSize: 12.5, marginTop: 6 }}>Қосындысы 100% болуы керек (қазір {sum}%)</div>}
+      <div className="muted" style={{ ...hint, marginTop: 12 }}>2–4 сыныптар: БЖБ/ТЖБ орнына аралық бағалау (әдепкі: ФО 50 · аралық 50)</div>
+      <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        {input('pfo', 'ФО')}
+        {input('interim', 'Аралық бағалау')}
+        <button className="btn primary" disabled={sum !== 100 || psum !== 100 || save.isPending || same} onClick={() => save.mutate()} style={{ marginBottom: 2 }}>
           Сақтау
         </button>
       </div>
-      {sum !== 100 && <div className="c-bad" style={{ fontSize: 12.5, marginTop: 6 }}>Қосындысы 100% болуы керек (қазір {sum}%)</div>}
+      {psum !== 100 && <div className="c-bad" style={{ fontSize: 12.5, marginTop: 6 }}>Қосындысы 100% болуы керек (қазір {psum}%)</div>}
     </Card>
   );
 }

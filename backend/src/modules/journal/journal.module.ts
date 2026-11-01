@@ -40,10 +40,9 @@ class JournalController {
       ...j.columns.map((c) => fmtDot(c.date).slice(0, 5)),
       'ФО орташа',
       'ФО %',
-      ...j.bjb.map((b, i) => `БЖБ ${i + 1} (/${b.maxScore})`),
-      'БЖБ %',
-      ...(j.tjb ? [`ТЖБ (/${j.tjb.maxScore})`] : []),
-      'ТЖБ %',
+      ...(j.primary
+        ? [...j.interim.map((b, i) => `Аралық ${i + 1} (/${b.maxScore})`), 'Аралық %']
+        : [...j.bjb.map((b, i) => `БЖБ ${i + 1} (/${b.maxScore})`), 'БЖБ %', ...(j.tjb ? [`ТЖБ (/${j.tjb.maxScore})`] : []), 'ТЖБ %']),
       'Тоқсан %',
       'Есептелген баға',
       'Қорытынды баға',
@@ -54,16 +53,20 @@ class JournalController {
       ...r.marks,
       r.foAvg,
       r.computed.foPct,
-      ...r.bjb.map((b) => (b == null ? null : b.absent ? 'жоқ' : b.score)),
-      r.computed.bjbPct,
-      ...(j.tjb ? [r.tjb == null ? null : r.tjb.absent ? 'жоқ' : r.tjb.score] : []),
-      r.computed.tjbPct,
+      ...(j.primary
+        ? [...r.interim.map((b) => (b == null ? null : b.absent ? 'жоқ' : b.score)), r.computed.interimPct]
+        : [
+            ...r.bjb.map((b) => (b == null ? null : b.absent ? 'жоқ' : b.score)),
+            r.computed.bjbPct,
+            ...(j.tjb ? [r.tjb == null ? null : r.tjb.absent ? 'жоқ' : r.tjb.score] : []),
+            r.computed.tjbPct,
+          ]),
       r.computed.pct,
       r.computed.mark,
       r.final?.mark ?? null,
     ]);
     const title = `Журнал: ${j.className}${j.groupName ? ` (${j.groupName})` : ''} · ${j.subject} · ${j.quarter}-тоқсан`;
-    const subtitle = `Салмақтар: ФО ${j.weights.fo}% · БЖБ ${j.weights.bjb}% · ТЖБ ${j.weights.tjb}%`;
+    const subtitle = j.primary ? `Салмақтар: ФО ${j.weights.fo}% · Аралық бағалау ${j.weights.interim}%` : `Салмақтар: ФО ${j.weights.fo}% · БЖБ ${j.weights.bjb}% · ТЖБ ${j.weights.tjb}%`;
     await this.audit.record(user, { action: 'Экспорт', entity: 'journal', entityId: `${q.classId}:${q.subjectId}:${q.quarterId}`, summary: `${title} (${q.format.toUpperCase()})` }, meta);
     const name = `journal_${j.className}${j.groupName ? `_${j.groupName}` : ''}_${j.subject}_${j.quarter}.${q.format}`;
     if (q.format === 'csv') return this.exporter.send(res, this.exporter.csv(headers, rows), name, 'csv');

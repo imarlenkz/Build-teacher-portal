@@ -80,11 +80,11 @@ export class AnalyticsService {
     };
   }
 
-  /** Оқушы × тоқсан × түр бойынша орташа пайыз. */
+  /** Оқушы × тоқсан × түр бойынша орташа пайыз. 2–4 сыныптардың аралық бағалауы жиынтық (ТЖБ) ретінде есептеледі. */
   private async assessmentRows(schoolId: number, s: ScopeSel, quarterIds: number[]) {
     if (!quarterIds.length) return [];
     return this.prisma.$queryRaw<{ student_id: number; quarter_id: number; type: 'BJB' | 'TJB'; pct: number }[]>`
-      SELECT r.student_id, a.quarter_id, a.type::text AS type, avg(r.percent)::float pct
+      SELECT r.student_id, a.quarter_id, (CASE WHEN a.type = 'ARALYK' THEN 'TJB' ELSE a.type::text END) AS type, avg(r.percent)::float pct
       FROM assessment_results r JOIN assessments a ON a.id = r.assessment_id
       JOIN students st ON st.id = r.student_id AND st.deleted_at IS NULL
       WHERE a.school_id = ${schoolId} AND a.quarter_id IN (${Prisma.join(quarterIds)}) AND NOT r.absent

@@ -80,7 +80,7 @@ export class NotificationsService {
       SELECT r.student_id, avg(r.percent)::float pct, min(sub.name) subject
       FROM assessment_results r JOIN assessments a ON a.id = r.assessment_id JOIN subjects sub ON sub.id = a.subject_id
       JOIN students st ON st.id = r.student_id AND st.status = 'ACTIVE' AND st.deleted_at IS NULL
-      WHERE a.school_id = ${user.schoolId} AND a.type = 'TJB' AND a.quarter_id = ${q.id} AND NOT r.absent
+      WHERE a.school_id = ${user.schoolId} AND a.type IN ('TJB', 'ARALYK') AND a.quarter_id = ${q.id} AND NOT r.absent
       ${ids ? (ids.length ? Prisma.sql`AND a.class_id IN (${Prisma.join(ids)})` : Prisma.sql`AND FALSE`) : Prisma.empty}
       ${!this.scope.isSchoolWide(user) ? Prisma.sql`AND (a.teacher_id = ${user.teacherId ?? -1} OR a.class_id IN (SELECT id FROM classes WHERE homeroom_teacher_id = ${user.teacherId ?? -1}))` : Prisma.empty}
       GROUP BY 1`;

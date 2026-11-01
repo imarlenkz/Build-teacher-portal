@@ -13,7 +13,7 @@ export interface CriterionStat {
 }
 
 export interface AssessmentInsightInput {
-  type: 'BJB' | 'TJB';
+  type: 'BJB' | 'TJB' | 'ARALYK';
   title: string;
   subject: string;
   className: string;
@@ -44,6 +44,8 @@ export interface QuarterSummaryInput {
   students: number;
   attendancePct: number | null;
   tjbAvg: number | null;
+  /** 'ТЖБ' немесе 2–4 сыныптарда 'Аралық'. */
+  summative?: string;
   quality: number | null;
   progress: number | null;
   prevTjbAvg: number | null;
@@ -110,7 +112,7 @@ export class RuleBasedInsights implements InsightsProvider {
     parts.push(`${i.className} сыныбы, «${i.subject}» пәні бойынша ${i.quarter}-тоқсанда ${i.students} оқушы оқыды.`);
     if (i.attendancePct != null) parts.push(`Сабаққа қатысу ${i.attendancePct}% құрады.`);
     if (i.tjbAvg != null) {
-      let s = `ТЖБ орташа нәтижесі ${i.tjbAvg}%`;
+      let s = `${i.summative ?? 'ТЖБ'} орташа нәтижесі ${i.tjbAvg}%`;
       if (i.prevTjbAvg != null) {
         const d = Math.round((i.tjbAvg - i.prevTjbAvg) * 10) / 10;
         s += d === 0 ? ' (алдыңғы тоқсанмен бірдей)' : d > 0 ? ` (алдыңғы тоқсаннан +${d} п.)` : ` (алдыңғы тоқсаннан ${d} п.)`;

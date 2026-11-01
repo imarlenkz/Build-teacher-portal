@@ -78,12 +78,13 @@ export class ReportRenderers {
   }
 
   private chart(d: QuarterReportData): Content {
+    const S = d.meta.summative;
     const W = 515;
     const H = 120;
     const series: { key: 'tjbAvg' | 'bjbAvg' | 'quality' | 'progress'; color: string; name: string }[] = [
       { key: 'progress', color: '#2e8b57', name: 'Үлгерім' },
       { key: 'quality', color: '#2a62b8', name: 'Сапа' },
-      { key: 'tjbAvg', color: '#7a4fb0', name: 'ТЖБ %' },
+      { key: 'tjbAvg', color: '#7a4fb0', name: `${S} %` },
       { key: 'bjbAvg', color: '#b07a1f', name: 'БЖБ %' },
     ];
     const groups = d.dynamics.length;
@@ -118,6 +119,7 @@ export class ReportRenderers {
   }
 
   async pdf(d: QuarterReportData): Promise<Buffer> {
+    const S = d.meta.summative;
     const m = d.meta;
     const kpis: [string, string, string?][] = [
       ['1. Оқушылар саны', String(d.counts.students)],
@@ -125,7 +127,7 @@ export class ReportRenderers {
       ['3. Қыздар', String(d.counts.girls)],
       ['6. Сабаққа қатысу', v(d.attendance?.pct, '%'), d.attendance ? `себепті ${d.attendance.excused} · себепсіз ${d.attendance.unexcused}` : undefined],
       ['7. БЖБ орташа', d.bjb.length ? `${Math.round((d.bjb.reduce((s, b) => s + b.avgPct, 0) / d.bjb.length) * 10) / 10}%` : '—', `${d.bjb.length} БЖБ`],
-      ['8. ТЖБ орташа', v(d.tjb?.avgPct, '%'), d.tjb ? `${d.tjb.title}` : undefined],
+      [`8. ${S} орташа`, v(d.tjb?.avgPct, '%'), d.tjb ? `${d.tjb.title}` : undefined],
       ['9–10. Үлгерім / Сапа', `${v(d.overall.progress, '%')} / ${v(d.overall.quality, '%')}`],
       ['11. Орташа балл', d.tjb ? `${d.tjb.avgScore} / ${d.tjb.maxScore}` : '—'],
     ];
@@ -172,7 +174,7 @@ export class ReportRenderers {
       d.bjb.length
         ? this.table(['БЖБ', 'Макс.', 'Орташа балл', 'Орташа %', 'Сапа %', 'Үлгерім %'], d.bjb.map((b) => [b.section ? `${b.title} · ${b.section}` : b.title, b.maxScore, b.avgScore, b.avgPct, b.quality, b.progress]), ['*', 40, 60, 55, 45, 55], 1)
         : { text: 'БЖБ нәтижелері енгізілмеген.', fontSize: 9, color: MUTED },
-      this.section(8, 'ТЖБ нәтижелері'),
+      this.section(8, `${S} нәтижелері`),
       d.tjb
         ? this.table(
             ['Көрсеткіш', 'Мәні'],
@@ -185,18 +187,18 @@ export class ReportRenderers {
             ],
             ['*', 150],
           )
-        : { text: 'ТЖБ нәтижелері енгізілмеген.', fontSize: 9, color: MUTED },
+        : { text: `${S} нәтижелері енгізілмеген.`, fontSize: 9, color: MUTED },
       this.section(12, 'Жоғары нәтиже көрсеткен оқушылар'),
       d.top.length
-        ? this.table(['№', 'Аты-жөні', 'ТЖБ %', 'БЖБ %', 'Қатысу %'], d.top.map((s, i) => [i + 1, s.fullName, s.tjbPct, s.bjbPct, s.attendancePct]), [20, '*', 55, 55, 55], 2)
+        ? this.table(['№', 'Аты-жөні', `${S} %`, 'БЖБ %', 'Қатысу %'], d.top.map((s, i) => [i + 1, s.fullName, s.tjbPct, s.bjbPct, s.attendancePct]), [20, '*', 55, 55, 55], 2)
         : { text: 'Жоғары деңгейдегі оқушы жоқ.', fontSize: 9, color: MUTED },
       this.section(13, 'Қиындық көріп отырған оқушылар'),
       d.struggling.length
-        ? this.table(['№', 'Аты-жөні', 'Себебі', 'ТЖБ %', 'Қатысу %'], d.struggling.map((s, i) => [i + 1, s.fullName, s.reasons.join(', '), s.tjbPct, s.attendancePct]), [20, '*', 150, 45, 50], 3)
+        ? this.table(['№', 'Аты-жөні', 'Себебі', `${S} %`, 'Қатысу %'], d.struggling.map((s, i) => [i + 1, s.fullName, s.reasons.join(', '), s.tjbPct, s.attendancePct]), [20, '*', 150, 45, 50], 3)
         : { text: 'Қиындық көріп отырған оқушы жоқ.', fontSize: 9, color: MUTED },
       this.section(14, 'Тоқсандар бойынша динамика (I → IV)'),
       this.table(
-        ['Тоқсан', 'ТЖБ %', 'БЖБ %', 'Сапа %', 'Үлгерім %', 'Қатысу %'],
+        ['Тоқсан', `${S} %`, 'БЖБ %', 'Сапа %', 'Үлгерім %', 'Қатысу %'],
         d.dynamics.map((q) => [q.label, q.tjbAvg, q.bjbAvg, q.quality, q.progress, q.attendancePct]),
         ['*', 55, 55, 55, 60, 60],
         1,
@@ -239,6 +241,7 @@ export class ReportRenderers {
   }
 
   sheets(d: QuarterReportData): SheetSpec[] {
+    const S = d.meta.summative;
     const m = d.meta;
     const title = `Тоқсандық есеп · ${m.className} · ${m.subject} · ${m.quarterLabel} · ${m.schoolYear}`;
     const sub = `${m.school} · Мұғалім: ${m.teacher}`;
@@ -247,7 +250,7 @@ export class ReportRenderers {
         name: 'Оқушылар',
         title,
         subtitle: sub,
-        headers: ['№', 'Аты-жөні', 'Жынысы', 'Қатысу %', 'Себепсіз', 'БЖБ %', 'ТЖБ балл', 'ТЖБ %', 'Деңгей'],
+        headers: ['№', 'Аты-жөні', 'Жынысы', 'Қатысу %', 'Себепсіз', 'БЖБ %', `${S} балл`, `${S} %`, 'Деңгей'],
         rows: d.students.map((s, i) => [i + 1, s.fullName, s.gender === 'M' ? 'Ұл' : 'Қыз', s.attendancePct, s.unexcused, s.bjbPct, s.tjbScore, s.tjbPct, s.level]),
       },
       {
@@ -282,12 +285,12 @@ export class ReportRenderers {
           ]),
           ...(d.tjb
             ? [
-                ['ТЖБ', 'Орташа балл', d.tjb.avgScore],
-                ['ТЖБ', 'Орташа %', d.tjb.avgPct],
-                ['ТЖБ', 'Сапа %', d.tjb.quality],
-                ['ТЖБ', 'Үлгерім %', d.tjb.progress],
-                ['ТЖБ', 'Ең жоғары %', d.tjb.maxPct],
-                ['ТЖБ', 'Ең төмен %', d.tjb.minPct],
+                [`${S}`, 'Орташа балл', d.tjb.avgScore],
+                [`${S}`, 'Орташа %', d.tjb.avgPct],
+                [`${S}`, 'Сапа %', d.tjb.quality],
+                [`${S}`, 'Үлгерім %', d.tjb.progress],
+                [`${S}`, 'Ең жоғары %', d.tjb.maxPct],
+                [`${S}`, 'Ең төмен %', d.tjb.minPct],
               ]
             : []),
           ...d.top.map((s) => ['Жоғары нәтиже', s.fullName, s.tjbPct ?? s.bjbPct]),
@@ -300,7 +303,7 @@ export class ReportRenderers {
         name: 'Аналитика',
         title,
         subtitle: sub,
-        headers: ['Тоқсан', 'ТЖБ %', 'БЖБ %', 'Сапа %', 'Үлгерім %', 'Қатысу %'],
+        headers: ['Тоқсан', `${S} %`, 'БЖБ %', 'Сапа %', 'Үлгерім %', 'Қатысу %'],
         rows: d.dynamics.map((q) => [q.label, q.tjbAvg, q.bjbAvg, q.quality, q.progress, q.attendancePct]),
       },
     ];
@@ -311,8 +314,9 @@ export class ReportRenderers {
   }
 
   csv(d: QuarterReportData) {
+    const S = d.meta.summative;
     return this.exporter.csv(
-      ['№', 'Аты-жөні', 'Жынысы', 'Қатысу %', 'Себепсіз', 'БЖБ %', 'ТЖБ балл', 'ТЖБ %', 'Деңгей'],
+      ['№', 'Аты-жөні', 'Жынысы', 'Қатысу %', 'Себепсіз', 'БЖБ %', `${S} балл`, `${S} %`, 'Деңгей'],
       d.students.map((s, i) => [i + 1, s.fullName, s.gender === 'M' ? 'Ұл' : 'Қыз', s.attendancePct, s.unexcused, s.bjbPct, s.tjbScore, s.tjbPct, s.level]),
     );
   }

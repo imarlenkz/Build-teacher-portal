@@ -7,7 +7,8 @@ import { PERM, useAuth } from '../lib/auth';
 import { useReference } from '../lib/reference';
 import { useToast } from '../lib/toast';
 import { levelColor, pct } from '../lib/format';
-import { AssessmentDetail, AssessmentListItem, levelIndexOf, liveStats, round1, ScoreStats, TYPE_KK } from '../lib/assess';
+import { AssessmentDetail, AssessmentListItem, levelIndexOf, liveStats, round1, ScoreStats, TYPE_KK, usesInterim } from '../lib/assess';
+import type { AssessmentType } from '../lib/assess';
 import { useIsMobile, useUrlState } from '../hooks';
 import { Badge, Card, ConfirmDialog, Empty, ErrorState, ExportMenu, Field, LevelBadge, Modal, Segmented, Spinner } from '../components/ui';
 
@@ -15,7 +16,7 @@ type Draft = { absent: boolean; score: string; criteria: string[] };
 
 const toNum = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
 
-export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
+export default function Assessments({ type }: { type: AssessmentType }) {
   const { ref, quarterId, setQuarterId, year, subjectsOf, groupsOf } = useReference();
   const { can } = useAuth();
   const nav = useNavigate();
@@ -25,6 +26,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
   const [s, set] = useUrlState({ classId: 0, subjectId: 0, groupId: 0, id: 0 });
   const classId = s.classId || ref.classes.find((c) => c.isHomeroom)?.id || ref.classes[0]?.id || 0;
   const subjects = subjectsOf(classId);
+  const primary = usesInterim(ref.classes.find((c) => c.id === classId)?.grade);
   const subjectId = subjects.some((x) => x.id === s.subjectId) ? s.subjectId : (subjects[0]?.id ?? 0);
   const canWrite = can(PERM.ASSESS) && ref.classSubjects.some((x) => x.classId === classId && x.subjectId === subjectId);
 
@@ -56,6 +58,12 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
     }
   };
 
+  // 2–4 сынып таңдалса — аралық бағалау бетіне, 5+ сынып таңдалса — БЖБ бетіне ауысу.
+  const mismatch = !!classId && primary !== (type === 'ARALYK');
+  useEffect(() => {
+    if (mismatch) nav(`/${primary ? 'aralyk' : 'bjb'}?classId=${classId}&subjectId=${subjectId}`, { replace: true });
+  }, [mismatch, primary, classId, subjectId, nav]);
+
   const a = detail.data;
   const tjbTaken = type === 'TJB' && !!list.data?.some((x) => (x.groupId ?? undefined) === groupId);
   return (
@@ -66,10 +74,14 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
           value={type}
           label="Бағалау түрі"
           onChange={(v) => nav(`/${v.toLowerCase()}?classId=${classId}&subjectId=${subjectId}`)}
-          options={[
-            { value: 'BJB', label: 'БЖБ' },
-            { value: 'TJB', label: 'ТЖБ' },
-          ]}
+          options={
+            primary
+              ? [{ value: 'ARALYK', label: 'Аралық бағалау' }]
+              : [
+                  { value: 'BJB', label: 'БЖБ' },
+                  { value: 'TJB', label: 'ТЖБ' },
+                ]
+          }
         />
         <span className="grow" />
         {a && type === 'TJB' && (
@@ -681,7 +693,7 @@ function AssessmentForm({
   onClose,
   onSaved,
 }: {
-  type: 'BJB' | 'TJB';
+  type: AssessmentType;
   initial: AssessmentDetail | null;
   classId: number;
   subjectId: number;
@@ -693,7 +705,7 @@ function AssessmentForm({
 }) {
   const { quarter, subjectName, ref } = useReference();
   const toast = useToast();
-  const [title, setTitle] = useState(initial?.title ?? (type === 'TJB' ? `ТЖБ · ${quarter.number}-тоқсан · ${subjectName(subjectId)}` : ''));
+  const [title, setTitle] = useState(initial?.title ?? (type === 'TJB' ? `ТЖБ · ${quarter.number}-тоқсан · ${subjectName(subjectId)}` : type === 'ARALYK' ? `Аралық бағалау · ${quarter.number}-тоқсан · ${subjectName(subjectId)}` : ''));
   const [section, setSection] = useState(initial?.section ?? '');
   const [date, setDate] = useState(initial?.date ?? ref.today);
   const [max, setMax] = useState(String(initial?.maxScore ?? (type === 'TJB' ? 30 : 20)));
