@@ -28,6 +28,7 @@ import { MovementsModule } from './modules/movements/movements.module';
 import { AssessmentsModule } from './modules/assessments/assessments.module';
 import { JournalModule } from './modules/journal/journal.module';
 import { NexusModule } from './modules/nexus/nexus.module';
+import { BilimClassModule } from './modules/bilimclass/bilimclass.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -75,6 +76,7 @@ import { BackupsModule } from './modules/backups/backups.module';
     AssessmentsModule,
     JournalModule,
     NexusModule,
+    BilimClassModule,
     AnalyticsModule,
     ReportsModule,
     NotificationsModule,

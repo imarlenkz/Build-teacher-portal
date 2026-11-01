@@ -10,8 +10,9 @@ import { DataTable, Col } from '../components/DataTable';
 import { Badge, Card, ConfirmDialog, DashboardCard, Empty, ErrorState, Field, Modal, SearchInput, Spinner } from '../components/ui';
 import { ClassesManager } from './Classes';
 import { NexusSync } from './NexusSync';
+import { BilimClassImport } from './BilimClassImport';
 
-type Tab = 'users' | 'classes' | 'subjects' | 'years' | 'schools' | 'nexus';
+type Tab = 'users' | 'classes' | 'subjects' | 'years' | 'schools' | 'nexus' | 'bilimclass';
 
 export default function Admin() {
   const { can, me } = useAuth();
@@ -22,6 +23,7 @@ export default function Admin() {
     { id: 'years', label: 'Оқу жылдары', show: can(PERM.SETTINGS) },
     { id: 'schools', label: 'Мектептер', show: can(PERM.SCHOOLS) },
     { id: 'nexus', label: 'Nexus', show: can(PERM.CLASSES) },
+    { id: 'bilimclass', label: 'BilimClass', show: can(PERM.CLASSES) },
   ];
   const visible = tabs.filter((t) => t.show);
   const [s, set] = useUrlState({ tab: visible[0]?.id ?? 'classes' });
@@ -51,6 +53,7 @@ export default function Admin() {
       {tab === 'years' && <Years />}
       {tab === 'schools' && <Schools />}
       {tab === 'nexus' && <NexusSync />}
+      {tab === 'bilimclass' && <BilimClassImport />}
     </div>
   );
 }
