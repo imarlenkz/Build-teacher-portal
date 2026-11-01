@@ -125,7 +125,7 @@ function Overview({ filter }: { filter: Filter }) {
   const a = att.data!;
   return (
     <div className="stack">
-      <div className="kpis">
+      <div className="kpis k4">
         <DashboardCard label={`ТЖБ орташа · ${last?.label ?? ''}`} value={pct(last?.tjbAvg)} tone="vio" sub={delta(last?.tjbAvg, prev?.tjbAvg)} />
         <DashboardCard label="БЖБ орташа" value={pct(last?.bjbAvg)} tone="acc" sub={delta(last?.bjbAvg, prev?.bjbAvg)} />
         <DashboardCard label="Сапа / Үлгерім" value={`${pct(last?.quality, 0)} / ${pct(last?.progress, 0)}`} tone="ok" />
@@ -307,7 +307,7 @@ function StudentTab({ studentId, onPick }: { studentId: number; onPick: (id: num
               Профиль
             </Link>
           </div>
-          <div className="kpis">
+          <div className="kpis k4">
             <DashboardCard label="Жылдық қатысу" value={pct(att.data!.summary.pct)} tone="ok" />
             <DashboardCard label="Себепсіз" value={att.data!.summary.unexcused} tone="bad" />
             <DashboardCard label="Себепті / ауырды" value={`${att.data!.summary.excused} / ${att.data!.summary.sick}`} />

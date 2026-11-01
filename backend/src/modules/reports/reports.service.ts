@@ -183,7 +183,7 @@ export class ReportsService {
       attendance,
       bjb: bjbStats,
       tjb: tjbStats ? { title: tjb!.title, ...tjbStats, maxScore: Number(tjb!.maxScore) } : null,
-      overall: { avgPct: overall.avgPct, quality: tjbStats?.quality ?? overall.quality, progress: tjbStats?.progress ?? overall.progress, avgScore: tjbStats?.avgScore ?? null },
+      overall: allPct.length ? { avgPct: overall.avgPct, quality: tjbStats?.quality ?? overall.quality, progress: tjbStats?.progress ?? overall.progress, avgScore: tjbStats?.avgScore ?? null } : { avgPct: null, quality: null, progress: null, avgScore: null },
       top: top.slice(0, 5),
       struggling,
       students: perStudent,
@@ -214,9 +214,11 @@ export class ReportsService {
 
   /** Тапсырылмаған есептер тізімі (әкімшілік үшін және хабарламалар үшін). */
   async status(user: AuthUser, quarterId: number) {
-    const ids = await this.scope.classIds(user);
+    const quarter = await this.prisma.quarter.findFirst({ where: { id: quarterId, schoolYear: { schoolId: user.schoolId } } });
+    if (!quarter) throw new NotFoundException('Тоқсан табылмады');
+    const ids = await this.scope.classIds(user, quarter.schoolYearId);
     const assignments = await this.prisma.teachingAssignment.findMany({
-      where: { schoolId: user.schoolId, ...(ids ? { classId: { in: ids } } : {}), ...(this.scope.isSchoolWide(user) ? {} : { teacherId: user.teacherId ?? -1 }) },
+      where: { schoolId: user.schoolId, schoolYearId: quarter.schoolYearId, ...(ids ? { classId: { in: ids } } : {}), ...(this.scope.isSchoolWide(user) ? {} : { teacherId: user.teacherId ?? -1 }) },
       include: { class: true, subject: true, teacher: { include: { user: { select: { fullName: true } } } } },
       orderBy: [{ class: { grade: 'asc' } }, { class: { letter: 'asc' } }],
     });

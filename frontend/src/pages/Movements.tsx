@@ -100,7 +100,7 @@ export default function Movements() {
         meta: { label: 'Бұйрық' },
         cell: ({ row: { original: m } }) => (
           <span className="mono">
-            № {m.orderNumber}
+            {m.orderNumber}
             {m.orderDate && <span className="muted"> · {dot(m.orderDate)}</span>}
           </span>
         ),
@@ -145,7 +145,7 @@ export default function Movements() {
         )}
       </div>
 
-      <div className="kpis" style={{ marginBottom: 14 }}>
+      <div className="kpis k4" style={{ marginBottom: 14 }}>
         <DashboardCard label="Барлық қозғалыс" value={st?.total ?? '—'} sub={`ұл ${st?.boys ?? 0} · қыз ${st?.girls ?? 0}`} />
         <DashboardCard label="Келді / қабылданды" value={st?.arrived ?? '—'} tone="ok" />
         <DashboardCard label="Кетті / шығарылды" value={st?.left ?? '—'} tone="bad" />

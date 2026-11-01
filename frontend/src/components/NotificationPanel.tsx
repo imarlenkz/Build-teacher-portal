@@ -1,16 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import type { Notification } from '../api/types';
 import { dateTime } from '../lib/format';
 import { Empty, Spinner } from './ui';
+
+type NotifList = { items: Notification[]; unread: number };
 
 export const SEV_COLOR = { INFO: 'acc', WARNING: 'warn', CRITICAL: 'bad' } as const;
 
 export function useNotifications() {
   return useQuery({
     queryKey: ['notifications'],
-    queryFn: () => api.post<{ items: Notification[]; unread: number }>('/notifications/refresh'),
+    // Ережелерді қайта есептеу (refresh) серверде шектелген: жиі жаңартқанда тек бар тізім оқылады.
+    queryFn: async () => {
+      const last = Number(sessionStorage.getItem('ustaz.notif.refresh') ?? 0);
+      if (Date.now() - last < 120_000) return api.get<NotifList>('/notifications');
+      sessionStorage.setItem('ustaz.notif.refresh', String(Date.now()));
+      return api.post<NotifList>('/notifications/refresh').catch((e) => {
+        if (e instanceof ApiError && e.status === 429) return api.get<NotifList>('/notifications');
+        throw e;
+      });
+    },
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });

@@ -190,7 +190,7 @@ function Users({ adding, setAdding, schoolName }: { adding: boolean; setAdding: 
   return (
     <div className="stack">
       {stats.data && (
-        <div className="kpis">
+        <div className="kpis k4">
           <DashboardCard label="Белсенді пайдаланушы" value={stats.data.users} sub={stats.data.byRole.map((r) => `${r.label} ${r.count}`).join(' · ')} />
           <DashboardCard label="Соңғы 7 күнде кірген" value={stats.data.activeLast7d} tone="acc" />
           <DashboardCard label="Белсенді оқушы" value={stats.data.students} tone="ok" />

@@ -27,12 +27,17 @@ export default function TjbAnalysis() {
     set({ quarterId: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.quarterId]);
-  const classId = s.classId || ref.classes.find((c) => c.isHomeroom)?.id || ref.classes[0]?.id || 0;
+  const overview = useQuery({ queryKey: ['assessments', { type: 'TJB', quarterId }], queryFn: () => api.get<AssessmentListItem[]>('/assessments', { type: 'TJB', quarterId }) });
+  // URL-да таңдау жоқ болса: алдымен өз сыныбымның нәтижесі бар ТЖБ, әйтпесе нәтижесі бар кез келген ТЖБ.
+  const withResults = (overview.data ?? []).filter((a) => a.results > 0);
+  const homeIds = new Set(ref.classes.filter((c) => c.isHomeroom).map((c) => c.id));
+  const fallback = withResults.find((a) => homeIds.has(a.classId)) ?? withResults[0];
+  const classId = s.classId || fallback?.classId || ref.classes.find((c) => c.isHomeroom)?.id || ref.classes[0]?.id || 0;
   const subjects = subjectsOf(classId);
-  const subjectId = subjects.some((x) => x.id === s.subjectId) ? s.subjectId : (subjects[0]?.id ?? 0);
+  const wantSubject = s.subjectId || (!s.classId && fallback ? fallback.subjectId : 0);
+  const subjectId = subjects.some((x) => x.id === wantSubject) ? wantSubject : (subjects[0]?.id ?? 0);
   const [view, setView] = useState<'all' | 'low'>('all');
 
-  const overview = useQuery({ queryKey: ['assessments', { type: 'TJB', quarterId }], queryFn: () => api.get<AssessmentListItem[]>('/assessments', { type: 'TJB', quarterId }) });
   const tjb = overview.data?.find((a) => a.classId === classId && a.subjectId === subjectId);
   const detail = useQuery({ queryKey: ['assessment', tjb?.id], queryFn: () => api.get<AssessmentDetail>(`/assessments/${tjb!.id}`), enabled: !!tjb });
   const a = detail.data;
@@ -168,7 +173,7 @@ export default function TjbAnalysis() {
           </Card>
         ) : (
           <div className="stack">
-            <div className="kpis">
+            <div className="kpis k4">
               <DashboardCard label="Орташа пайыз" value={pct(st.avgPct)} tone="acc" sub={`орташа балл ${st.avgScore} / ${a.maxScore}`} />
               <DashboardCard label="Сапа" value={`${st.quality}%`} tone="ok" sub="жоғары екі деңгей" />
               <DashboardCard label="Үлгерім" value={`${st.progress}%`} tone="vio" sub="ең төменгі деңгейден жоғары" />

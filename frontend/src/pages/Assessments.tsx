@@ -112,7 +112,7 @@ export default function Assessments({ type }: { type: 'BJB' | 'TJB' }) {
         </Field>
         {!!list.data?.length && (
           <Field label="Атауы">
-            <select className="select" value={id} onChange={(e) => set({ id: Number(e.target.value) })} style={{ minWidth: 220 }}>
+            <select className="select" value={id} onChange={(e) => set({ id: Number(e.target.value) })}>
               {list.data.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.title} {x.results ? `· ${pct(x.avgPct)}` : '· енгізілмеген'}

@@ -23,7 +23,7 @@ export default function Notifications() {
         <h1 className="page-title">Хабарламалар</h1>
         <span className="page-sub">{unread ? `${unread} оқылмаған` : 'Барлығы оқылған'}</span>
         <span className="grow" />
-        <button className="btn" onClick={() => q.refetch()} disabled={q.isFetching}>
+        <button className="btn" onClick={() => (sessionStorage.removeItem('ustaz.notif.refresh'), q.refetch())} disabled={q.isFetching}>
           {q.isFetching ? <Spinner /> : '↻'} Жаңарту
         </button>
         <button className="btn" onClick={() => readAll.mutate()} disabled={!unread || readAll.isPending}>

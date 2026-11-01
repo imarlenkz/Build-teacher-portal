@@ -379,6 +379,9 @@ select.chip {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
+.kpis.k4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .kpi {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1260,7 +1263,7 @@ table.tbl {
   display: none;
 }
 @media (max-width: 1280px) {
-  .kpis {
+  .kpis:not(.k4) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .grid-3 {
@@ -1313,7 +1316,8 @@ table.tbl {
   .page-title {
     font-size: 22px;
   }
-  .kpis {
+  .kpis,
+  .kpis.k4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .mobile-only {
