@@ -46,6 +46,10 @@ class SchoolInput {
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(60) shortName: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(200) address?: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(80) city?: string;
+  /** iMARLEN ID-дағы мектеп коды (мыс. s51). Бос жол — байланысты алып тастау. */
+  @IsOptional() @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @Matches(/^([a-z0-9][a-z0-9_-]{0,39})?$/, { message: 'iMARLEN ID коды: латын әріптері, сандар, - және _' })
+  idpCode?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 class SubjectInput {
@@ -97,6 +101,7 @@ class AdminService {
         roleLabel: ROLE_LABELS_KK[u.role.code],
         status: u.status,
         lastLoginAt: u.lastLoginAt,
+        idp: !!u.idpSub,
         homeroom: u.teacher?.homeroomOf.map((c) => c.name) ?? [],
         lessons: u.teacher?.assignments.length ?? 0,
         isSelf: u.id === user.id,
@@ -199,20 +204,21 @@ class AdminService {
   }
 
   async schools() {
-    const rows = await this.prisma.$queryRaw<{ id: number; name: string; short_name: string; city: string | null; address: string | null; is_active: boolean; students: bigint; teachers: bigint; classes: bigint }[]>`
-      SELECT s.id, s.name, s.short_name, s.city, s.address, s.is_active,
+    const rows = await this.prisma.$queryRaw<{ id: number; name: string; short_name: string; city: string | null; address: string | null; is_active: boolean; idp_code: string | null; students: bigint; teachers: bigint; classes: bigint }[]>`
+      SELECT s.id, s.name, s.short_name, s.city, s.address, s.is_active, s.idp_code,
         (SELECT count(*) FROM students st WHERE st.school_id = s.id AND st.status = 'ACTIVE' AND st.deleted_at IS NULL) students,
         (SELECT count(*) FROM teachers t JOIN users u ON u.id = t.user_id WHERE t.school_id = s.id AND u.deleted_at IS NULL) teachers,
         (SELECT count(*) FROM classes c JOIN school_years y ON y.id = c.school_year_id AND y.is_current WHERE c.school_id = s.id) classes
       FROM schools s ORDER BY s.id`;
-    return rows.map((r) => ({ id: r.id, name: r.name, shortName: r.short_name, city: r.city, address: r.address, isActive: r.is_active, students: Number(r.students), teachers: Number(r.teachers), classes: Number(r.classes) }));
+    return rows.map((r) => ({ id: r.id, name: r.name, shortName: r.short_name, city: r.city, address: r.address, idpCode: r.idp_code, isActive: r.is_active, students: Number(r.students), teachers: Number(r.teachers), classes: Number(r.classes) }));
   }
 
   /** Жаңа мектеп: базалық оқу жылы, тоқсандар, деңгейлер мен баптаулар бірге құрылады. */
   async createSchool(user: AuthUser, dto: SchoolInput, meta: RequestMeta) {
     const cur = await this.prisma.schoolYear.findFirst({ where: { schoolId: user.schoolId, isCurrent: true }, include: { quarters: true } });
+    const idpCode = await this.checkIdpCode(dto.idpCode, null);
     const s = await this.prisma.$transaction(async (tx) => {
-      const s = await tx.school.create({ data: { name: dto.name, shortName: dto.shortName, address: dto.address, city: dto.city } });
+      const s = await tx.school.create({ data: { name: dto.name, shortName: dto.shortName, address: dto.address, city: dto.city, idpCode } });
       await tx.schoolSettings.create({ data: { schoolId: s.id } });
       await tx.levelRange.createMany({ data: DEFAULT_LEVELS.map((l) => ({ ...l, schoolId: s.id })) });
       if (cur) {
@@ -233,13 +239,21 @@ class AdminService {
     return { id: s.id };
   }
 
+  private async checkIdpCode(code: string | undefined, selfId: number | null) {
+    if (!code) return null;
+    const other = await this.prisma.school.findUnique({ where: { idpCode: code } });
+    if (other && other.id !== selfId) throw new BadRequestException(`«${code}» коды «${other.shortName}» мектебіне берілген`);
+    return code;
+  }
+
   async updateSchool(user: AuthUser, id: number, dto: SchoolInput, meta: RequestMeta) {
     const s = await this.prisma.school.findUnique({ where: { id } });
     if (!s) throw new NotFoundException('Мектеп табылмады');
     if (dto.isActive === false && id === user.homeSchoolId) throw new BadRequestException('Өз мектебіңізді өшіре алмайсыз');
+    const idpCode = dto.idpCode === undefined ? s.idpCode : await this.checkIdpCode(dto.idpCode, id);
     await this.prisma.$transaction(async (tx) => {
-      await tx.school.update({ where: { id }, data: { name: dto.name, shortName: dto.shortName, address: dto.address, city: dto.city, ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) } });
-      await this.audit.record(user, { action: 'Мектеп деректерін өзгертті', entity: 'school', entityId: id, summary: dto.name, before: { name: s.name, isActive: s.isActive }, after: { name: dto.name, isActive: dto.isActive ?? s.isActive } }, meta, tx);
+      await tx.school.update({ where: { id }, data: { name: dto.name, shortName: dto.shortName, address: dto.address, city: dto.city, idpCode, ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) } });
+      await this.audit.record(user, { action: 'Мектеп деректерін өзгертті', entity: 'school', entityId: id, summary: dto.name, before: { name: s.name, isActive: s.isActive, idpCode: s.idpCode }, after: { name: dto.name, isActive: dto.isActive ?? s.isActive, idpCode } }, meta, tx);
     });
     return { ok: true };
   }

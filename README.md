@@ -11,7 +11,8 @@
 5. [VPS-ке орнату (Docker Compose + HTTPS)](#vps-ке-орнату)
 6. [Резервтік көшірме және қалпына келтіру](#резервтік-көшірме)
 7. [Жаңарту](#жаңарту)
-8. [Env айнымалылары](#env-айнымалылары)
+8. [iMARLEN ID арқылы кіру](#imarlen-id-арқылы-кіру)
+9. [Env айнымалылары](#env-айнымалылары)
 
 ## Архитектура
 
@@ -166,6 +167,33 @@ Firewall: тек 22, 80, 443 порттары ашық болуы керек. Po
 ./deploy/scripts/deploy.sh    # git pull → backup → build → up -d (миграциялар автоматты)
 ```
 
+## iMARLEN ID арқылы кіру
+
+Портал iMARLEN ID-ға (OpenID Connect, authorization code + PKCE) қосылады. Мұғалім «iMARLEN ID арқылы кіру» батырмасын басады, id.imarlen.kz-те кіреді және порталға оралады.
+
+1. **Клиентті тіркеу** (id.imarlen.kz серверінде):
+   ```bash
+   docker compose exec id node --disable-warning=ExperimentalWarning src/cli.mjs client ustaz "Ұстаз" \
+     https://<домен>/api/auth/callback https://<домен>/ https://<домен>/
+   ```
+   Шыққан `client_secret`-ті Ұстаз серверіндегі `.env` файлына `IID_CLIENT_SECRET` ретінде жазыңыз (чатқа, git-ке салмаңыз). `IID_CLIENT_ID=ustaz`.
+2. `docker compose up -d backend` — кіру бетінде батырма пайда болады.
+3. **Мектептерді байланыстыру:** «Басқару → Мектептер → Өңдеу» бетінде iMARLEN ID-дағы мектеп кодын (мыс. `s51`) көрсетіңіз.
+
+Ережелер:
+
+| iMARLEN ID рөлі | Порталдағы рөл |
+|---|---|
+| `teacher` | Мұғалім |
+| `school_admin` | Мектеп әкімшілігі |
+| `platform_owner` | Admin |
+| `student`, `parent` | кіргізілмейді |
+
+- Пайдаланушы `sub` бойынша табылады. Табылмаса, сол мектептегі логині `preferred_username`-ге тең бұрынғы аккаунт бір рет байланыстырылады; болмаса жаңа аккаунт автоматты жасалады. Әр кіруде аты, рөлі және мектебі iMARLEN ID бойынша жаңартылады, рөл өзгерісі аудитке жазылады.
+- Порталда бұғатталған немесе жойылған аккаунт iMARLEN ID арқылы да кіре алмайды.
+- `IID_PASSWORD_LOGIN=false` болса, тек Admin құпиясөзбен кіре алады (апаттық кіру үшін).
+- SSO арқылы кірген пайдаланушы шыққанда iMARLEN ID сессиясы да жабылады.
+
 ## Env айнымалылары
 
 Толық тізім мен түсініктемелер `.env.example` файлында. Негізгілері:
@@ -180,6 +208,8 @@ Firewall: тек 22, 80, 443 порттары ашық болуы керек. Po
 | `SCHOOL_NAME`, `SCHOOL_SHORT_NAME` | Бірінші мектеп |
 | `SEED_DEMO` | Демо деректер |
 | `SWAGGER_ENABLED` | API құжаттамасы |
+| `IID_ISSUER`, `IID_CLIENT_ID`, `IID_CLIENT_SECRET` | iMARLEN ID арқылы кіру |
+| `IID_PASSWORD_LOGIN` | Құпиясөзбен кіруді қалдыру (әдепкі `true`) |
 | `NEXUS_API_URL`, `NEXUS_INTEGRATION_KEY` | Nexus-тен мұғалімдер мен сабақ кестесін импорттау (кілт Nexus-тегі `INTEGRATION_KEY`-мен бірдей) |
 
 Production режимінде әлсіз немесе әдепкі кілттермен backend іске қосылмайды.

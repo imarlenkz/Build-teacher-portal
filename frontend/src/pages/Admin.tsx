@@ -64,6 +64,7 @@ interface UserRow {
   roleLabel: string;
   status: 'ACTIVE' | 'BLOCKED';
   lastLoginAt: string | null;
+  idp: boolean;
   homeroom: string[];
   lessons: number;
   isSelf: boolean;
@@ -109,7 +110,7 @@ function Users({ adding, setAdding, schoolName }: { adding: boolean; setAdding: 
         cell: ({ row: { original: u } }) => (
           <div>
             <div style={{ fontWeight: 500 }}>
-              {u.fullName} {u.isSelf && <Badge tone="acc">сіз</Badge>}
+              {u.fullName} {u.isSelf && <Badge tone="acc">сіз</Badge>} {u.idp && <Badge tone="vio">iMARLEN ID</Badge>}
             </div>
             <div className="id">
               {u.login}
@@ -612,6 +613,7 @@ interface SchoolRow {
   shortName: string;
   city: string | null;
   address: string | null;
+  idpCode: string | null;
   isActive: boolean;
   students: number;
   teachers: number;
@@ -648,7 +650,7 @@ function Schools() {
               key={s.id}
               title={
                 <span className="row">
-                  {s.shortName} {me?.school?.id === s.id && <Badge tone="acc">ағымдағы</Badge>} {!s.isActive && <Badge tone="bad">өшірілген</Badge>}
+                  {s.shortName} {me?.school?.id === s.id && <Badge tone="acc">ағымдағы</Badge>} {!s.isActive && <Badge tone="bad">өшірілген</Badge>} {s.idpCode && <Badge tone="vio">iMARLEN ID: {s.idpCode}</Badge>}
                 </span>
               }
               sub={[s.name, s.city, s.address].filter(Boolean).join(' · ')}
@@ -688,11 +690,11 @@ function Schools() {
 function SchoolForm({ s, onClose }: { s: SchoolRow | null; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [f, setF] = useState({ name: s?.name ?? '', shortName: s?.shortName ?? '', city: s?.city ?? '', address: s?.address ?? '' });
+  const [f, setF] = useState({ name: s?.name ?? '', shortName: s?.shortName ?? '', city: s?.city ?? '', address: s?.address ?? '', idpCode: s?.idpCode ?? '' });
   const [err, setErr] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: f.name.trim(), shortName: f.shortName.trim(), city: f.city.trim() || undefined, address: f.address.trim() || undefined, ...(s ? { isActive: s.isActive } : {}) };
+      const body = { name: f.name.trim(), shortName: f.shortName.trim(), city: f.city.trim() || undefined, address: f.address.trim() || undefined, idpCode: f.idpCode.trim().toLowerCase(), ...(s ? { isActive: s.isActive } : {}) };
       return s ? api.put(`/admin/schools/${s.id}`, body) : api.post('/admin/schools', body);
     },
     onSuccess: () => {
@@ -706,6 +708,7 @@ function SchoolForm({ s, onClose }: { s: SchoolRow | null; onClose: () => void }
   const submit = () => {
     if (f.name.trim().length < 3) return setErr('Толық атауы кемінде 3 таңба');
     if (f.shortName.trim().length < 2) return setErr('Қысқа атауы кемінде 2 таңба');
+    if (f.idpCode.trim() && !/^[a-z0-9][a-z0-9_-]{0,39}$/i.test(f.idpCode.trim())) return setErr('iMARLEN ID коды: латын әріптері, сандар, - және _');
     save.mutate();
   };
   return (
@@ -737,8 +740,12 @@ function SchoolForm({ s, onClose }: { s: SchoolRow | null; onClose: () => void }
         <Field label="Мекенжайы" className="full">
           <input className="input" value={f.address} maxLength={200} onChange={(e) => setF({ ...f, address: e.target.value })} />
         </Field>
+        <Field label="iMARLEN ID коды" className="full">
+          <input className="input mono" value={f.idpCode} maxLength={40} autoCapitalize="none" onChange={(e) => setF({ ...f, idpCode: e.target.value })} placeholder="мыс. s51" />
+        </Field>
       </div>
       {!s && <div className="muted" style={{ marginTop: 10, fontSize: 12.5 }}>Жаңа мектепке стандартты деңгейлер мен баптаулар автоматты түрде жасалады.</div>}
+      <div className="muted" style={{ marginTop: 10, fontSize: 12.5 }}>iMARLEN ID коды көрсетілсе, сол мектептің мұғалімдері iMARLEN ID арқылы кіргенде порталда автоматты тіркеледі.</div>
       {err && (
         <div className="err-box" style={{ marginTop: 10 }}>
           {err}

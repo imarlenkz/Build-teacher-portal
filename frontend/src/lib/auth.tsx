@@ -34,7 +34,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [qc]);
   const logout = useCallback(async () => {
+    const sso = qc.getQueryData<Me | null>(['me'])?.idp;
     await api.post('/auth/logout').catch(() => undefined);
+    if (sso) {
+      // iMARLEN ID сессиясын да жабамыз, әйтпесе келесі «кіру» құпиясөзсіз қайта кіргізеді.
+      const r = await api.get<{ url: string | null }>('/auth/idp/logout-url').catch(() => null);
+      if (r?.url) {
+        window.location.assign(r.url);
+        return;
+      }
+    }
     qc.clear();
     qc.setQueryData(['me'], null);
   }, [qc]);

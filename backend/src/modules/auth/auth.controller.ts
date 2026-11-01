@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Logger, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
@@ -7,7 +7,8 @@ import { CurrentUser, Public, ReqMeta, SkipCsrf } from '../../common/decorators'
 import type { AuthUser, RequestMeta } from '../../common/auth-user';
 import { AuthService, IssuedTokens } from './auth.service';
 import { ChangePasswordDto, LoginDto } from './auth.dto';
-import { ACCESS_COOKIE, ACCESS_TTL_SEC, CSRF_COOKIE, REFRESH_COOKIE, REFRESH_TTL_SEC } from './auth.constants';
+import { IdpError, IdpService, safeNext } from './idp.service';
+import { ACCESS_COOKIE, IDP_COOKIE, ACCESS_TTL_SEC, CSRF_COOKIE, REFRESH_COOKIE, REFRESH_TTL_SEC } from './auth.constants';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -15,7 +16,10 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly config: ConfigService,
+    private readonly idp: IdpService,
   ) {}
+
+  private readonly log = new Logger('AuthController');
 
   private base(): CookieOptions {
     return { secure: this.config.get('COOKIE_SECURE', 'true') !== 'false', sameSite: 'strict', path: '/' };
@@ -70,6 +74,63 @@ export class AuthController {
     await this.auth.logout((req.cookies as Record<string, string>)[REFRESH_COOKIE]);
     this.clearCookies(res);
     return { ok: true };
+  }
+
+  /** Кіру бетіне: iMARLEN ID қосулы ма, құпиясөзбен кіруге бола ма. */
+  @Public()
+  @Get('idp/config')
+  idpConfig() {
+    return { enabled: this.idp.enabled, passwordLogin: !this.idp.enabled || this.idp.passwordLogin };
+  }
+
+  /** iMARLEN ID-ға бағыттау. State cookie SameSite=lax — қайта оралғанда (cross-site redirect) жіберілуі үшін. */
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('idp/start')
+  async idpStart(@Query('next') next: string | undefined, @Res() res: Response) {
+    if (!this.idp.enabled) return res.redirect(302, '/?sso_error=' + encodeURIComponent('iMARLEN ID қосылмаған'));
+    try {
+      const { url, cookie } = await this.idp.start(safeNext(next));
+      res.cookie(IDP_COOKIE, cookie, { ...this.base(), sameSite: 'lax', httpOnly: true, path: '/api/auth', maxAge: 600_000 });
+      return res.redirect(302, url);
+    } catch (e) {
+      return res.redirect(302, '/?sso_error=' + encodeURIComponent(this.ssoMessage(e)));
+    }
+  }
+
+  /** iMARLEN ID-дан оралу: тексеру, тіркеу/байланыстыру, жеке сессия ашу. */
+  @Public()
+  @SkipCsrf()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('callback')
+  async idpCallback(
+    @Req() req: Request,
+    @Query() q: { code?: string; state?: string; error?: string; error_description?: string },
+    @ReqMeta() meta: RequestMeta,
+    @Res() res: Response,
+  ) {
+    res.clearCookie(IDP_COOKIE, { ...this.base(), sameSite: 'lax', path: '/api/auth' });
+    try {
+      const { claims, next } = await this.idp.callback((req.cookies as Record<string, string>)[IDP_COOKIE], q);
+      const user = await this.idp.provision(claims, meta);
+      this.setCookies(res, await this.auth.issueFor(user, meta));
+      return res.redirect(302, safeNext(next));
+    } catch (e) {
+      return res.redirect(302, '/?sso_error=' + encodeURIComponent(this.ssoMessage(e)));
+    }
+  }
+
+  /** SSO арқылы кірген пайдаланушы шыққанда iMARLEN ID сессиясын да жабу сілтемесі. */
+  @Public()
+  @Get('idp/logout-url')
+  async idpLogoutUrl() {
+    return { url: await this.idp.logoutUrl() };
+  }
+
+  private ssoMessage(e: unknown) {
+    if (e instanceof IdpError) return e.message;
+    this.log.error(e instanceof Error ? e.stack ?? e.message : String(e));
+    return 'iMARLEN ID арқылы кіру сәтсіз аяқталды. Кейінірек қайталаңыз';
   }
 
   @Get('me')
