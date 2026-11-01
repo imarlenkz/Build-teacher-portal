@@ -158,23 +158,36 @@ export function studentMatcher(students: Existing['students']) {
   };
 }
 
-/** Мұғалімді табу: толық аты-жөні немесе «Тегі А.Б.» (тегі + инициалдар), бірегей болса. */
+/**
+ * Мұғалімді табу (бірегей болса ғана): толық аты-жөні, «Тегі А.Б.» (тегі + инициалдар),
+ * «Тегі Аты» (алғашқы екі сөз), соңында тек тегі. Бір ұяшықта бірнеше мұғалім болса
+ * («Тегі А., Тегі Б.»), бірінші табылғаны алынады.
+ */
 export function teacherMatcher(teachers: Existing['teachers']) {
-  const sig = (n: string, initials: number) => {
+  const list = teachers.map((t) => ({ id: t.id, w: normName(t.fullName).split(' ') }));
+  const unique = (hits: { id: number }[]) => (new Set(hits.map((h) => h.id)).size === 1 ? hits[0].id : null);
+  const one = (n: string): number | null => {
     const w = n.split(' ');
-    return [w[0], ...w.slice(1, 1 + initials).map((x) => x[0])].join(' ');
+    const exact = list.filter((t) => t.w.join(' ') === n);
+    if (exact.length) return unique(exact);
+    if (w.length > 1 && w.slice(1).every((x) => x.length === 1)) {
+      // «Ахметова Г С» (нүктелер алынған)
+      return unique(list.filter((t) => t.w[0] === w[0] && w.slice(1).every((x, i) => t.w[i + 1]?.[0] === x)));
+    }
+    if (w.length >= 2) {
+      const hit = unique(list.filter((t) => t.w[0] === w[0] && t.w[1] === w[1]));
+      if (hit != null) return hit;
+    }
+    return unique(list.filter((t) => t.w[0] === w[0]));
   };
   return (name: string | null | undefined): number | null => {
-    const n = normName(name);
-    if (!n) return null;
-    const exact = teachers.filter((t) => normName(t.fullName) === n);
-    if (exact.length === 1) return exact[0].id;
-    // «Ахметова Г С» (нүктелер алынған) → тегі + инициалдар
-    const w = n.split(' ');
-    const initials = w.slice(1).every((x) => x.length === 1) ? w.length - 1 : -1;
-    if (initials < 0) return null;
-    const hits = teachers.filter((t) => sig(normName(t.fullName), initials) === n);
-    return hits.length === 1 ? hits[0].id : null;
+    for (const part of String(name ?? '').split(/[,;/]|\sжәне\s|\sи\s/)) {
+      const n = normName(part);
+      if (!n) continue;
+      const id = one(n);
+      if (id != null) return id;
+    }
+    return null;
   };
 }
 

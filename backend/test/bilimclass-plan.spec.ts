@@ -46,6 +46,10 @@ describe('bilimclass helpers', () => {
     expect(find('Жақыпова А.Б.')).toBe(100);
     expect(find('Жақыпов А.')).toBe(101);
     expect(find('Белгісіз Б.')).toBeNull();
+    // Бір ұяшықта екі мұғалім; «Тегі Аты»; тек тегі
+    expect(find('Белгісіз Б.; Жақыпова Алия')).toBe(100);
+    expect(find('Жақыпов Асқар Ержанұлы')).toBe(101);
+    expect(find('Жақыпова')).toBe(100);
   });
 });
 

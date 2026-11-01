@@ -192,6 +192,14 @@ function ClassEditor({ c, teachers, onClose }: { c: ClassRow; teachers: Teacher[
                         </option>
                       ))}
                     </select>
+                    {s.groups.some((g) => g.teacher) && (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
+                        {s.groups
+                          .filter((g) => g.teacher)
+                          .map((g) => `${g.teacher} (${g.name})`)
+                          .join(', ')}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>

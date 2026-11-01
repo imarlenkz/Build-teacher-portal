@@ -160,13 +160,49 @@ export class BilimClassService {
     const sums = plan.summatives.filter((s) => hasSubject(s.subject));
     const finals = plan.quarterMarks.filter((q) => hasSubject(q.subject));
 
-    const existingGroup = (sid: number | undefined, key: string) => (sid == null ? undefined : existingGroups.find((g) => g.subjectId === sid && groupKey(g.name) === key));
+    const sidOf = (name: string) => subjectId.get(normName(name));
+    /**
+     * BilimClass тобын Ұстаздағы топпен сәйкестендіру:
+     * 1) мұғалімі бірдей топ (мысалы «Қыздар · Тынышбай» → Nexus-тің «1-топ · Тынышбай»),
+     *    егер ол мұғалім бұл пәнде екі жақта да бір ғана топты жүргізсе;
+     * 2) нөмірі бірдей топ («1 топ» = «1-топ»);
+     * 3) атауы бірдей топ.
+     */
+    const resolved = new Map<string, (typeof existingGroups)[number]>();
+    for (const g of groups) {
+      const sid = sidOf(g.subject);
+      if (sid == null) continue;
+      const same = existingGroups.filter((x) => x.subjectId === sid);
+      const byKey = same.filter((x) => groupKey(x.name) === g.key);
+      // Мұғалімі бойынша (екі жақта да бұл мұғалімнің осы пәнде бір ғана тобы болса) — нөмірден басым,
+      // өйткені BilimClass пен Nexus-те топ нөмірлері ауысып кетуі мүмкін.
+      let hit: (typeof existingGroups)[number] | undefined;
+      if (g.teacherId) {
+        const mine = same.filter((x) => x.teacherId === g.teacherId);
+        const imported = groups.filter((y) => sidOf(y.subject) === sid && y.teacherId === g.teacherId);
+        if (mine.length === 1 && imported.length === 1) hit = mine[0];
+      }
+      if (!hit && /^\d+$/.test(g.key)) hit = byKey.find((x) => !x.teacherId || !groups.some((y) => sidOf(y.subject) === sid && y.teacherId === x.teacherId)) ?? byKey[0];
+      hit ??= byKey[0];
+      if (hit) resolved.set(`${sid}|${g.key}`, hit);
+    }
+    const existingGroup = (sid: number | undefined, key: string) => (sid == null ? undefined : resolved.get(`${sid}|${key}`));
+    // Бұрынғы импортта мұғалімсіз жасалған («Қыздар») топ енді басқа топқа сәйкестенсе — біріктіріледі.
+    const merges: { from: (typeof existingGroups)[number]; to: (typeof existingGroups)[number]; subject: string }[] = [];
+    for (const g of groups) {
+      const sid = sidOf(g.subject);
+      const to = existingGroup(sid, g.key);
+      if (!to || groupKey(to.name) === g.key) continue;
+      for (const from of existingGroups.filter((x) => x.subjectId === sid && x.id !== to.id && !x.teacherId && groupKey(x.name) === g.key))
+        merges.push({ from, to, subject: g.subject });
+    }
+    for (const m of merges) warnings.push(`${m.subject}: «${m.from.name}» тобы «${m.to.name}» тобымен біріктіріледі (мұғалімі бірдей)`);
 
     // Бар бағандар мен бағалауларды алдын ала жүктеу (preview санағы мен apply үшін).
     const [columns, assessments] = await Promise.all([
       this.prisma.gradeColumn.findMany({
         where: { classId: cls.id, quarterId: quarter.id },
-        select: { id: true, subjectId: true, groupId: true, date: true },
+        select: { id: true, subjectId: true, groupId: true, date: true, topic: true },
         orderBy: { id: 'asc' },
       }),
       this.prisma.assessment.findMany({
@@ -190,7 +226,6 @@ export class BilimClassService {
     const findAssessment = (sid: number | undefined, gid: number | null, s: Plan['summatives'][number]) =>
       assessments.find((a) => a.subjectId === sid && a.groupId === gid && a.type === s.type && (fmtDate(a.date) ?? null) === s.date && Number(a.maxScore) === s.maxScore);
 
-    const sidOf = (name: string) => subjectId.get(normName(name));
     const outside = fo.filter((c) => c.date < fmtDate(quarter.startDate)! || c.date > fmtDate(quarter.endDate)!).length;
     if (outside) warnings.push(`${outside} ФО бағаны ${dto.quarter}-тоқсан аралығынан тыс (${fmtDot(quarter.startDate)} – ${fmtDot(quarter.endDate)}), бірақ импортталады`);
 
@@ -244,6 +279,15 @@ export class BilimClassService {
             subjectId.set(normName(name), s.id);
           }
         }
+        // Қайталанған топтарды біріктіру (бағандар, бағалаулар, мүшелер көшіріледі)
+        for (const { from, to } of merges) {
+          await tx.gradeColumn.updateMany({ where: { groupId: from.id }, data: { groupId: to.id } });
+          await tx.assessment.updateMany({ where: { groupId: from.id }, data: { groupId: to.id } });
+          await tx.subjectGroupMember.updateMany({ where: { groupId: from.id }, data: { groupId: to.id } });
+          await tx.subjectGroup.delete({ where: { id: from.id } });
+          for (const c of columns) if (c.groupId === from.id) c.groupId = to.id;
+          for (const a of assessments) if (a.groupId === from.id) a.groupId = to.id;
+        }
         // Топтар және мүшелері
         const createdGroups = new Map<string, number>();
         let order = existingGroups.length;
@@ -290,6 +334,56 @@ export class BilimClassService {
             });
           }
         }
+        // Оқушы басқа топқа ауысса (мысалы бұрын топ нөмірі бойынша қате сәйкестенсе), оның бұрынғы топтағы
+        // BilimClass бағалары өшіріледі; бос қалған BilimClass бағандары мен бағалаулары жойылады.
+        const targetOf = new Map<string, number>(); // sid|studentId → groupId
+        for (const g of groups) {
+          const sid = sidOf(g.subject)!;
+          const gid = groupIdFor(sid, g.key, createdGroups);
+          if (gid != null) for (const st of g.members) targetOf.set(`${sid}|${st}`, gid);
+        }
+        if (targetOf.size) {
+          const moved = (sid: number, gid: number | null) => (st: number) => {
+            const t = targetOf.get(`${sid}|${st}`);
+            return t != null && gid != null && t !== gid;
+          };
+          for (const c of columns.filter((x) => x.groupId != null && x.topic === 'BilimClass')) {
+            const wrong = [...targetOf.keys()]
+              .filter((k) => k.startsWith(`${c.subjectId}|`))
+              .map((k) => Number(k.split('|')[1]))
+              .filter(moved(c.subjectId, c.groupId));
+            if (wrong.length) await tx.grade.deleteMany({ where: { columnId: c.id, studentId: { in: wrong } } });
+          }
+          for (const a of assessments.filter((x) => x.groupId != null)) {
+            const wrong = [...targetOf.keys()]
+              .filter((k) => k.startsWith(`${a.subjectId}|`))
+              .map((k) => Number(k.split('|')[1]))
+              .filter(moved(a.subjectId, a.groupId));
+            if (wrong.length) await tx.assessmentResult.deleteMany({ where: { assessmentId: a.id, studentId: { in: wrong } } });
+          }
+          const emptyCols = await tx.gradeColumn.findMany({
+            where: { classId: cls.id, quarterId: quarter.id, topic: 'BilimClass', groupId: { not: null }, grades: { none: {} } },
+            select: { id: true },
+          });
+          if (emptyCols.length) {
+            await tx.gradeColumn.deleteMany({ where: { id: { in: emptyCols.map((x) => x.id) } } });
+            const gone = new Set(emptyCols.map((x) => x.id));
+            columns.splice(0, columns.length, ...columns.filter((x) => !gone.has(x.id)));
+          }
+          // Бос бағалау тек импорттағы БЖБ/ТЖБ/аралыққа сәйкес келсе ғана жойылады (мұғалім алдын ала жасағанына тимейміз).
+          const planned = new Set(sums.map((x) => `${sidOf(x.subject)}|${x.type}|${x.date ?? ''}|${x.maxScore}`));
+          const emptyAs = (
+            await tx.assessment.findMany({
+              where: { classId: cls.id, quarterId: quarter.id, groupId: { not: null }, results: { none: {} } },
+              select: { id: true, subjectId: true, type: true, date: true, maxScore: true },
+            })
+          ).filter((a) => planned.has(`${a.subjectId}|${a.type}|${fmtDate(a.date) ?? ''}|${Number(a.maxScore)}`));
+          if (emptyAs.length) {
+            await tx.assessment.deleteMany({ where: { id: { in: emptyAs.map((x) => x.id) } } });
+            const gone = new Set(emptyAs.map((x) => x.id));
+            assessments.splice(0, assessments.length, ...assessments.filter((x) => !gone.has(x.id)));
+          }
+        }
         // ФО бағандары мен бағалары
         for (const c of fo) {
           const sid = sidOf(c.subject)!;
@@ -306,7 +400,7 @@ export class BilimClassService {
                 date: toDate(c.date),
                 topic: 'BilimClass',
               },
-              select: { id: true, subjectId: true, groupId: true, date: true },
+              select: { id: true, subjectId: true, groupId: true, date: true, topic: true },
             });
             columns.push(made);
             col = made;
