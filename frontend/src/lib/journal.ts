@@ -5,15 +5,18 @@ export interface Weights {
   fo: number;
   bjb: number;
   tjb: number;
+  /** 2–4 сыныптар: аралық бағалау салмағы. */
+  interim?: number;
 }
 
 export interface Computed {
   foPct: number | null;
   bjbPct: number | null;
   tjbPct: number | null;
+  interimPct: number | null;
   pct: number | null;
   mark: number | null;
-  missing: ('fo' | 'bjb' | 'tjb')[];
+  missing: ('fo' | 'bjb' | 'tjb' | 'interim')[];
 }
 
 type ScoreCell = { score: number; absent: boolean; pct: number | null } | null;
@@ -28,6 +31,7 @@ export interface JournalRow {
   foAvg: number | null;
   bjb: ScoreCell[];
   tjb: ScoreCell;
+  interim: ScoreCell[];
   computed: Computed;
   final: { mark: number; computedPct: number | null; updatedAt: string } | null;
 }
@@ -49,6 +53,9 @@ export interface Journal {
   columns: { id: number; date: string; topic: string | null }[];
   bjb: { id: number; title: string; maxScore: number }[];
   tjb: { id: number; title: string; maxScore: number } | null;
+  /** 2–4 сынып: БЖБ/ТЖБ орнына аралық бағалау. */
+  primary: boolean;
+  interim: { id: number; title: string; maxScore: number }[];
   rows: JournalRow[];
   finalsCount: number;
 }
@@ -67,7 +74,7 @@ export interface JournalYear {
 
 export const FO_MAX = 10;
 export const MARK_COLOR: Record<number, string> = { 2: 'bad', 3: 'warn', 4: 'acc', 5: 'ok' };
-export const PART_KK = { fo: 'ФО', bjb: 'БЖБ', tjb: 'ТЖБ' } as const;
+export const PART_KK = { fo: 'ФО', bjb: 'БЖБ', tjb: 'ТЖБ', interim: 'Аралық бағалау' } as const;
 
 /** Backend-тегі markFromPct-пен бірдей. */
 export function markFromPct(pct: number, levels: Level[]): number {
@@ -77,24 +84,26 @@ export function markFromPct(pct: number, levels: Level[]): number {
 }
 
 /** Backend-тегі computeQuarter-мен бірдей: енгізу кезінде серверсіз жедел қайта есептеу. */
-export function computeQuarter(fo: number[], bjbPct: number | null, tjbPct: number | null, w: Weights, levels: Level[]): Computed {
+export function computeQuarter(fo: number[], bjbPct: number | null, tjbPct: number | null, w: Weights, levels: Level[], interimPct: number | null = null): Computed {
   const foPct = fo.length ? (fo.reduce((s, x) => s + x, 0) / (fo.length * FO_MAX)) * 100 : null;
   const parts: [keyof Weights, number | null][] = [
     ['fo', foPct],
     ['bjb', bjbPct],
     ['tjb', tjbPct],
+    ['interim', interimPct],
   ];
   let sw = 0;
   let sum = 0;
   const missing: Computed['missing'] = [];
   for (const [k, v] of parts) {
-    if (w[k] <= 0) continue;
+    const wk = w[k] ?? 0;
+    if (wk <= 0) continue;
     if (v == null) missing.push(k);
     else {
-      sw += w[k];
-      sum += w[k] * v;
+      sw += wk;
+      sum += wk * v;
     }
   }
   const pct = sw > 0 ? round1(sum / sw) : null;
-  return { foPct: foPct == null ? null : round1(foPct), bjbPct, tjbPct, pct, mark: pct == null ? null : markFromPct(pct, levels), missing };
+  return { foPct: foPct == null ? null : round1(foPct), bjbPct, tjbPct, interimPct, pct, mark: pct == null ? null : markFromPct(pct, levels), missing };
 }

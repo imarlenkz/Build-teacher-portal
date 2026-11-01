@@ -35,6 +35,8 @@ interface Report {
     generatedAt: string;
     generatedBy: string;
     status: 'DRAFT' | 'SUBMITTED';
+    /** 'ТЖБ' немесе 2–4 сыныптарда 'Аралық'. */
+    summative: string;
     submittedAt: string | null;
     dueDate: string | null;
   };
@@ -219,8 +221,8 @@ export default function QuarterReport() {
               <div className="stack" style={{ gap: 8 }}>
                 <div className="stack" style={{ gap: 4, fontSize: 12.5 }}>
                   <Check ok={d.completeness.hasAttendance} label="Қатысу белгіленген" />
-                  <Check ok={d.completeness.hasBjb} label="БЖБ нәтижелері енгізілген" />
-                  <Check ok={d.completeness.hasTjb} label="ТЖБ нәтижелері енгізілген" />
+                  {d.meta.summative === 'ТЖБ' && <Check ok={d.completeness.hasBjb} label="БЖБ нәтижелері енгізілген" />}
+                  <Check ok={d.completeness.hasTjb} label={`${d.meta.summative === 'ТЖБ' ? 'ТЖБ' : 'Аралық бағалау'} нәтижелері енгізілген`} />
                 </div>
                 <Field label="Қорытынды (есепке енеді)">
                   {editing ? (
@@ -239,7 +241,7 @@ export default function QuarterReport() {
                     {submit.isPending && <Spinner />} {d.meta.status === 'SUBMITTED' ? 'Қайта тапсыру' : 'Есепті тапсыру'}
                   </button>
                 </div>
-                {!d.completeness.hasBjb && !d.completeness.hasTjb && <div className="muted" style={{ fontSize: 12 }}>Тапсыру үшін БЖБ немесе ТЖБ нәтижесі қажет.</div>}
+                {!d.completeness.hasBjb && !d.completeness.hasTjb && <div className="muted" style={{ fontSize: 12 }}>Тапсыру үшін {d.meta.summative === 'ТЖБ' ? 'БЖБ немесе ТЖБ' : 'аралық бағалау'} нәтижесі қажет.</div>}
               </div>
             </Card>
           )}
@@ -289,6 +291,7 @@ function Check({ ok, label }: { ok: boolean; label: string }) {
 /** Ресми есеп түріндегі алдын ала қарау (PDF-пен бірдей 14 бөлім). */
 function Doc({ d, summary }: { d: Report; summary: string }) {
   const m = d.meta;
+  const S = m.summative;
   const bjbAvg = d.bjb.length ? Math.round((d.bjb.reduce((s, b) => s + b.avgPct, 0) / d.bjb.length) * 10) / 10 : null;
   const kpis: [string, string, string?][] = [
     ['1. Оқушылар саны', String(d.counts.students)],
@@ -296,7 +299,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
     ['3. Қыздар', String(d.counts.girls)],
     ['6. Сабаққа қатысу', v(d.attendance?.pct), d.attendance ? `себепті ${d.attendance.excused} · себепсіз ${d.attendance.unexcused}` : undefined],
     ['7. БЖБ нәтижесі', v(bjbAvg), `${d.bjb.length} БЖБ`],
-    ['8. ТЖБ нәтижесі', v(d.tjb?.avgPct), d.tjb?.title],
+    [`8. ${S} нәтижесі`, v(d.tjb?.avgPct), d.tjb?.title],
     ['9. Үлгерім / 10. Сапа', `${v(d.overall.progress)} / ${v(d.overall.quality)}`],
     ['11. Орташа балл', d.tjb ? `${d.tjb.avgScore} / ${d.tjb.maxScore}` : '—'],
   ];
@@ -427,7 +430,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
         <div className="muted">БЖБ нәтижелері енгізілмеген.</div>
       )}
 
-      <h2>8. ТЖБ нәтижелері</h2>
+      <h2>8. {S} нәтижелері</h2>
       {d.tjb ? (
         <table>
           <tbody>
@@ -458,11 +461,11 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
           </tbody>
         </table>
       ) : (
-        <div className="muted">ТЖБ нәтижелері енгізілмеген.</div>
+        <div className="muted">{S} нәтижелері енгізілмеген.</div>
       )}
 
       <h2>12. Жоғары нәтиже көрсеткен оқушылар</h2>
-      <StudentsTable rows={d.top} empty="Жоғары деңгейдегі оқушы жоқ." />
+      <StudentsTable rows={d.top} S={S} empty="Жоғары деңгейдегі оқушы жоқ." />
       <h2>13. Қиындық көріп отырған оқушылар</h2>
       {d.struggling.length ? (
         <table>
@@ -470,7 +473,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
             <tr>
               <th>Оқушы</th>
               <th>Себебі</th>
-              <th className="num">ТЖБ %</th>
+              <th className="num">{S} %</th>
               <th className="num">Қатысу</th>
             </tr>
           </thead>
@@ -504,7 +507,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
         <tbody>
           {(
             [
-              ['ТЖБ %', 'tjbAvg'],
+              [`${S} %`, 'tjbAvg'],
               ['БЖБ %', 'bjbAvg'],
               ['Сапа %', 'quality'],
               ['Үлгерім %', 'progress'],
@@ -532,7 +535,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
           series={[
             { key: 'progress', name: 'Үлгерім', color: 'ok' },
             { key: 'quality', name: 'Сапа', color: 'acc' },
-            { key: 'tjb', name: 'ТЖБ %', color: 'vio' },
+            { key: 'tjb', name: `${S} %`, color: 'vio' },
             { key: 'bjb', name: 'БЖБ %', color: 'warn' },
           ]}
         />
@@ -540,7 +543,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
           items={[
             { name: 'Үлгерім', color: 'ok' },
             { name: 'Сапа', color: 'acc' },
-            { name: 'ТЖБ %', color: 'vio' },
+            { name: `${S} %`, color: 'vio' },
             { name: 'БЖБ %', color: 'warn' },
           ]}
         />
@@ -554,7 +557,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
             <th>Оқушы</th>
             <th className="num">Қатысу</th>
             <th className="num">БЖБ %</th>
-            <th className="num">ТЖБ %</th>
+            <th className="num">{S} %</th>
             <th>Деңгей</th>
           </tr>
         </thead>
@@ -592,7 +595,7 @@ function Doc({ d, summary }: { d: Report; summary: string }) {
   );
 }
 
-function StudentsTable({ rows, empty }: { rows: StudentLine[]; empty: string }) {
+function StudentsTable({ rows, empty, S }: { rows: StudentLine[]; empty: string; S: string }) {
   if (!rows.length) return <div className="muted">{empty}</div>;
   return (
     <table>
@@ -600,7 +603,7 @@ function StudentsTable({ rows, empty }: { rows: StudentLine[]; empty: string }) 
         <tr>
           <th>Оқушы</th>
           <th className="num">БЖБ %</th>
-          <th className="num">ТЖБ %</th>
+          <th className="num">{S} %</th>
           <th className="num">Қатысу</th>
         </tr>
       </thead>

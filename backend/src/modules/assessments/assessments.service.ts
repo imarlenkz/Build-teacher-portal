@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AssessmentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import type { AuthUser, RequestMeta } from '../../common/auth-user';
@@ -9,9 +9,10 @@ import { AuditService } from '../audit/audit.service';
 import { INSIGHTS_PROVIDER, InsightsProvider } from '../insights/insights';
 import { fmtDate, toDate } from '../../common/utils/dates';
 import { levelIndex, round1, scoreStats } from '../../common/utils/stats';
+import { usesInterim } from '../../common/utils/grades';
 import { AssessmentInput, AssessmentListQuery, SaveResultsInput } from './assessments.dto';
 
-const TYPE_KK = { BJB: 'БЖБ', TJB: 'ТЖБ' } as const;
+const TYPE_KK = { BJB: 'БЖБ', TJB: 'ТЖБ', ARALYK: 'Аралық бағалау' } as const;
 
 @Injectable()
 export class AssessmentsService {
@@ -126,7 +127,7 @@ export class AssessmentsService {
   }
 
   private async computeAnalysis(
-    a: { type: 'BJB' | 'TJB'; title: string; class: { name: string }; subject: { name: string }; criteria: { id: number; code: string; topic: string; maxScore: Prisma.Decimal }[] },
+    a: { type: AssessmentType; title: string; class: { name: string }; subject: { name: string }; criteria: { id: number; code: string; topic: string; maxScore: Prisma.Decimal }[] },
     rows: { entered: boolean; absent: boolean; score: number | null; pct: number | null; criteria: (number | null)[]; levelIndex: number | null; fullName: string; studentId: number }[],
     lv: Awaited<ReturnType<LevelsService['get']>>,
   ) {
@@ -194,6 +195,8 @@ export class AssessmentsService {
     const group = await this.scope.resolveGroup(user, dto.classId, dto.subjectId, dto.groupId, true);
     this.validateCriteria(dto);
     const cls = await this.prisma.class.findUniqueOrThrow({ where: { id: dto.classId } });
+    if (usesInterim(cls.grade) && dto.type !== 'ARALYK') throw new BadRequestException('2–4 сыныптарда БЖБ/ТЖБ орнына аралық бағалау алынады');
+    if (!usesInterim(cls.grade) && dto.type === 'ARALYK') throw new BadRequestException('Аралық бағалау тек 2–4 сыныптарда алынады');
     const quarter = await this.prisma.quarter.findFirst({ where: { id: dto.quarterId, schoolYearId: cls.schoolYearId } });
     if (!quarter) throw new BadRequestException('Тоқсан сынып оқу жылына сәйкес емес');
     if (dto.type === 'TJB') {

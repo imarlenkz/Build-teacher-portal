@@ -52,6 +52,7 @@ export function AppLayout() {
     { to: '/journal', label: t('nav.journal') },
     { to: '/bjb', label: t('nav.bjb') },
     { to: '/tjb', label: t('nav.tjb') },
+    { to: '/aralyk', label: t('nav.aralyk'), show: ref.classes.some((c) => c.grade >= 2 && c.grade <= 4) },
     { to: '/tjb-analysis', label: t('nav.tjbAnalysis') },
     { to: '/report', label: t('nav.report') },
     { to: '/analytics', label: t('nav.analytics') },

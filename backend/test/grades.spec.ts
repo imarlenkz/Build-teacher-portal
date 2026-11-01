@@ -1,4 +1,4 @@
-import { computeQuarter, DEFAULT_WEIGHTS, markFromPct, yearMark } from '../src/common/utils/grades';
+import { computeQuarter, DEFAULT_PRIMARY_WEIGHTS, DEFAULT_WEIGHTS, markFromPct, usesInterim, yearMark } from '../src/common/utils/grades';
 import { DEFAULT_LEVELS } from '../src/modules/core/levels.service';
 
 describe('markFromPct', () => {
@@ -50,5 +50,24 @@ describe('yearMark', () => {
     expect(yearMark([4, 4, 4, 5])).toBe(4);
     expect(yearMark([3, null, 4])).toBe(4);
     expect(yearMark([null, null])).toBeNull();
+  });
+});
+
+describe('interim assessment (grades 2–4)', () => {
+  it('applies only to grades 2–4', () => {
+    expect([1, 2, 3, 4, 5].map(usesInterim)).toEqual([false, true, true, true, false]);
+  });
+  it('weights ФО 50 / аралық 50 and ignores БЖБ/ТЖБ', () => {
+    const r = computeQuarter({ fo: [8], bjb: [{ score: 0, max: 10 }], tjb: null, interim: [{ score: 6, max: 10 }, { score: 4, max: 10 }] }, DEFAULT_PRIMARY_WEIGHTS, DEFAULT_LEVELS);
+    // ФО 80%, аралық 10/20 = 50% → 65%
+    expect(r.interimPct).toBe(50);
+    expect(r.pct).toBe(65);
+    expect(r.mark).toBe(4);
+    expect(r.missing).toEqual([]);
+  });
+  it('falls back to ФО when no interim assessment yet', () => {
+    const r = computeQuarter({ fo: [9], bjb: [], tjb: null, interim: [] }, DEFAULT_PRIMARY_WEIGHTS, DEFAULT_LEVELS);
+    expect(r.pct).toBe(90);
+    expect(r.missing).toEqual(['interim']);
   });
 });

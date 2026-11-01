@@ -2,7 +2,7 @@ import type { Level } from '../api/types';
 
 export interface AssessmentListItem {
   id: number;
-  type: 'BJB' | 'TJB';
+  type: AssessmentType;
   title: string;
   section: string | null;
   classId: number;
@@ -98,4 +98,7 @@ export function liveStats(rows: { score: number; pct: number }[], levels: Level[
   };
 }
 
-export const TYPE_KK = { BJB: 'БЖБ', TJB: 'ТЖБ' } as const;
+export type AssessmentType = 'BJB' | 'TJB' | 'ARALYK';
+export const TYPE_KK: Record<AssessmentType, string> = { BJB: 'БЖБ', TJB: 'ТЖБ', ARALYK: 'Аралық бағалау' };
+/** 2–4 сыныптарда БЖБ/ТЖБ орнына аралық бағалау алынады. */
+export const usesInterim = (grade?: number) => !!grade && grade >= 2 && grade <= 4;

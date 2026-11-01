@@ -99,7 +99,7 @@ export class StudentsService {
       ), tjb AS (
         SELECT r.student_id, avg(r.percent)::float AS pct
         FROM assessment_results r JOIN assessments a ON a.id = r.assessment_id
-        WHERE a.school_id = ${user.schoolId} AND a.type = 'TJB' AND a.quarter_id = ${quarter?.id ?? -1} AND NOT r.absent
+        WHERE a.school_id = ${user.schoolId} AND a.type IN ('TJB', 'ARALYK') AND a.quarter_id = ${quarter?.id ?? -1} AND NOT r.absent
         GROUP BY r.student_id
       )
       SELECT s.id, s.student_code, s.full_name, s.gender, s.birth_date, s.class_id, c.name AS class_name,

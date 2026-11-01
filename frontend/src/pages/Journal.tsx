@@ -153,7 +153,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
     () =>
       j.rows.map((r) => {
         const fo = j.columns.map((c) => Number(marks[key(r.studentId, c.id)])).filter((v) => v >= 1);
-        return computeQuarter(fo, r.computed.bjbPct, r.computed.tjbPct, j.weights, j.levels);
+        return computeQuarter(fo, r.computed.bjbPct, r.computed.tjbPct, j.weights, j.levels, r.computed.interimPct);
       }),
     [j, marks],
   );
@@ -232,7 +232,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
     <div className="stack">
       <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
         <span className="chip">
-          Формула: ФО {w.fo}% · БЖБ {w.bjb}% · ТЖБ {w.tjb}%
+          {j.primary ? `Формула: ФО ${w.fo}% · Аралық бағалау ${w.interim ?? 0}%` : `Формула: ФО ${w.fo}% · БЖБ ${w.bjb}% · ТЖБ ${w.tjb}%`}
         </span>
         <span className="chip">
           {dot(j.startDate)} – {dot(j.endDate)}
@@ -290,6 +290,12 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                 {j.bjb.map((b, i) => (
                   <th key={b.id} className="num" title={`${b.title} · /${b.maxScore}`}>
                     БЖБ {i + 1}
+                    <div className="col-topic">/{b.maxScore}</div>
+                  </th>
+                ))}
+                {j.interim.map((b, i) => (
+                  <th key={b.id} className="num" title={`${b.title} · /${b.maxScore}`}>
+                    Аралық{j.interim.length > 1 ? ` ${i + 1}` : ''}
                     <div className="col-topic">/{b.maxScore}</div>
                   </th>
                 ))}
@@ -356,6 +362,11 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                         {b == null ? <span className="muted">—</span> : b.absent ? <span className="muted">жоқ</span> : b.score}
                       </td>
                     ))}
+                    {r.interim.map((b, bi) => (
+                      <td key={`i${bi}`} className="num" title={b?.pct != null ? pct(b.pct) : undefined}>
+                        {b == null ? <span className="muted">—</span> : b.absent ? <span className="muted">жоқ</span> : b.score}
+                      </td>
+                    ))}
                     {j.tjb && (
                       <td className="num" title={r.tjb?.pct != null ? pct(r.tjb.pct) : undefined}>
                         {r.tjb == null ? <span className="muted">—</span> : r.tjb.absent ? <span className="muted">жоқ</span> : r.tjb.score}
@@ -397,7 +408,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
               })}
               {!j.rows.length && (
                 <tr>
-                  <td colSpan={7 + j.columns.length + j.bjb.length}>
+                  <td colSpan={7 + j.columns.length + j.bjb.length + j.interim.length}>
                     <Empty>Сыныпта белсенді оқушы жоқ</Empty>
                   </td>
                 </tr>
@@ -407,7 +418,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
         </div>
         <div className="table-foot">
           <span className="muted">
-            {j.columns.length} сабақ · БЖБ {j.bjb.length} · ТЖБ {j.tjb ? 1 : 0}
+            {j.columns.length} сабақ · {j.primary ? `аралық бағалау ${j.interim.length}` : `БЖБ ${j.bjb.length} · ТЖБ ${j.tjb ? 1 : 0}`}
             {dirty && <span className="c-warn"> · сақталмаған өзгерістер бар</span>}
           </span>
           {canWrite && (
@@ -431,7 +442,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
         </div>
       </div>
       <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-        Ағымдағы баға 1–10 балл. Тоқсан % = ФО% × {w.fo}% + БЖБ% × {w.bjb}% + ТЖБ% × {w.tjb}%; деректері жоқ бөлік (*) есептен шығып, қалғандарының салмағы пропорционалды артады. Баға: {lv.length === 4 ? lv.map((l, i) => `${l.fromPct}–${l.toPct}% → ${i + 2}`).join(', ') : '85%+ → 5, 65% → 4, 40% → 3, одан төмен → 2'}. БЖБ/ТЖБ балдары «Бағалау» бетінде енгізіледі. Enter / ↑↓←→ — жылжу.
+        Ағымдағы баға 1–10 балл. Тоқсан % = {j.primary ? `ФО% × ${w.fo}% + аралық бағалау% × ${w.interim ?? 0}%` : `ФО% × ${w.fo}% + БЖБ% × ${w.bjb}% + ТЖБ% × ${w.tjb}%`}; деректері жоқ бөлік (*) есептен шығып, қалғандарының салмағы пропорционалды артады. Баға: {lv.length === 4 ? lv.map((l, i) => `${l.fromPct}–${l.toPct}% → ${i + 2}`).join(', ') : '85%+ → 5, 65% → 4, 40% → 3, одан төмен → 2'}. {j.primary ? 'Аралық бағалау' : 'БЖБ/ТЖБ'} балдары «Бағалау» бетінде енгізіледі. Enter / ↑↓←→ — жылжу.
       </div>
 
       {col && (

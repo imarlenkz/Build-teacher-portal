@@ -1,3 +1,4 @@
+import { usesInterim } from '../../common/utils/grades';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -68,9 +69,10 @@ export class ReportsService {
       include: { results: true, criteria: { orderBy: { order: 'asc' } } },
       orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
     });
+    const summative = usesInterim(cls.grade) ? 'Аралық' : 'ТЖБ';
     const bjb = assessments.filter((a) => a.type === 'BJB');
     // Пән топтарға бөлінсе, әр топтың өз ТЖБ-сы болады: есепте барлығының нәтижелері біріктіріледі.
-    const tjbs = assessments.filter((a) => a.type === 'TJB');
+    const tjbs = assessments.filter((a) => a.type === 'TJB' || a.type === 'ARALYK'); // 2–4 сыныптарда ТЖБ орнына аралық бағалау
     const tjb = tjbs.length ? { ...tjbs[0], title: tjbs.map((a) => a.title).join(' / '), results: tjbs.flatMap((a) => a.results) } : undefined;
     const bjbStats = bjb.map((a) => {
       const rows = a.results.filter((r) => !r.absent).map((r) => ({ score: Number(r.score), pct: Number(r.percent) }));
@@ -108,7 +110,7 @@ export class ReportsService {
       .map((s) => ({
         ...s,
         reasons: [
-          s.levelIndex === 0 ? (s.tjbPct != null ? `ТЖБ ${s.tjbPct}%` : `БЖБ ${s.bjbPct}%`) : null,
+          s.levelIndex === 0 ? (s.tjbPct != null ? `${summative} ${s.tjbPct}%` : `БЖБ ${s.bjbPct}%`) : null,
           s.attendancePct != null && s.attendancePct < threshold ? `қатысу ${s.attendancePct}%` : null,
           s.unexcused >= 3 ? `${s.unexcused} себепсіз` : null,
         ].filter(Boolean) as string[],
@@ -139,6 +141,7 @@ export class ReportsService {
         students: students.length,
         attendancePct: attendance?.pct ?? null,
         tjbAvg: tjbStats?.avgPct ?? null,
+        summative,
         quality: tjbStats?.quality ?? null,
         progress: tjbStats?.progress ?? null,
         prevTjbAvg: prev?.tjbAvg ?? null,
@@ -163,6 +166,8 @@ export class ReportsService {
         generatedAt: new Date().toISOString(),
         generatedBy: user.fullName,
         status: stored?.status ?? 'DRAFT',
+        // 2–4 сыныптарда жиынтық бағалау — аралық бағалау.
+        summative,
         submittedAt: stored?.submittedAt ?? null,
         dueDate: fmtDate(quarter.reportDueDate),
       },

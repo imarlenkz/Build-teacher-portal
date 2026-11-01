@@ -33,7 +33,7 @@ class AssessmentsController {
   @RequirePermissions(P.REPORTS_EXPORT)
   async export(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() q: AnalysisExportQuery, @ReqMeta() meta: RequestMeta, @Res() res: Response) {
     const a = await this.svc.get(user, id);
-    const t = a.type === 'TJB' ? 'ТЖБ' : 'БЖБ';
+    const t = a.type === 'TJB' ? 'ТЖБ' : a.type === 'ARALYK' ? 'Аралық бағалау' : 'БЖБ';
     const headers = ['№', 'Оқушы', ...a.criteria.map((c) => `${c.code} (/${c.maxScore})`), `Балл (/${a.maxScore})`, '%', 'Деңгей', 'Нәтиже'];
     const rows = a.rows.map((r, i) => [
       i + 1,

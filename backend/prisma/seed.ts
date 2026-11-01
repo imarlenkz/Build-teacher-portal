@@ -11,7 +11,7 @@ import { AttendanceStatus, Gender, MovementType, Prisma, PrismaClient, RoleCode 
 import * as argon2 from 'argon2';
 import { DEFAULT_ROLE_PERMISSIONS } from '../src/common/permissions';
 import { DEFAULT_LEVELS } from '../src/modules/core/levels.service';
-import { computeQuarter, DEFAULT_WEIGHTS } from '../src/common/utils/grades';
+import { computeQuarter, DEFAULT_PRIMARY_WEIGHTS, DEFAULT_WEIGHTS, usesInterim } from '../src/common/utils/grades';
 import { makeIin, PiiCipher } from '../src/common/utils/crypto';
 import { addDays, fmtDate, todayStr, toDate, weekday } from '../src/common/utils/dates';
 
@@ -463,9 +463,26 @@ async function demo() {
       const [cls, subj] = k.split('|');
       if (!classMap[cls]) continue;
       const tl = teacherFor(cls, subj);
+      // Өткен жылы сынып бір саты төмен болған (2А → 1А).
+      const grade = parseInt(cls) - (isPrev ? 1 : 0);
       const members = students.filter((s) => s.cls === cls || transfer.get(s.id)?.f === cls).filter((s) => isPrev || !leftIds.has(s.id) || true);
       for (const q of yearQuarters.filter((x) => x.number <= upToQuarter)) {
         const drift = isPrev ? -0.04 + q.number * 0.012 : 0;
+        if (grade < 2) continue;
+        if (usesInterim(grade)) {
+          // 2–4 сыныптар: БЖБ/ТЖБ орнына тоқсан сайын бір аралық бағалау.
+          const ar = await prisma.assessment.create({
+            data: { schoolId: school.id, type: 'ARALYK', classId: classMap[cls], subjectId: subjects[subj], quarterId: q.id, teacherId: teacherIds[tl], title: `${['I', 'II', 'III', 'IV'][q.number - 1]} тоқсан аралық бағалау`, maxScore: 20, date: toDate(addDays(fmtDate(q.endDate)!, -8)) },
+          });
+          await prisma.assessmentResult.createMany({
+            data: members.map((s) => {
+              const r = rng(s.seed + 11 + ar.id);
+              const sc = clamp(Math.round(20 * (s.base + drift + (r() - 0.5) * 0.2)), 0, 20);
+              return { assessmentId: ar.id, studentId: s.id, score: sc, percent: Math.round((sc / 20) * 1000) / 10 };
+            }),
+          });
+          continue;
+        }
         const secs = BJB_SECTIONS[subj].slice(0, 2 + (q.number % 2));
         for (const [si, sec] of secs.entries()) {
           if (!isPrev && q.number === upToQuarter && si >= 2) continue;
@@ -518,7 +535,7 @@ async function demo() {
   const curQ = year.quarters.find((q) => fmtDate(q.startDate)! <= today && today <= fmtDate(q.endDate)!) ?? [...year.quarters].reverse().find((q) => fmtDate(q.startDate)! <= today);
   await createAssessments(prevYear.quarters, prevClassIds, 4, true);
   if (curQ) await createAssessments(year.quarters, classIds, curQ.number, false);
-  console.log('✓ assessments (БЖБ/ТЖБ)');
+  console.log('✓ assessments (БЖБ/ТЖБ, 2–4: аралық)');
 
   // Журнал: ағымдағы бағалар (1–10) және аяқталған тоқсандардың қорытынды бағалары.
   if (curQ) {
@@ -560,8 +577,9 @@ async function demo() {
                 fo: grades.filter((g) => g.studentId === s.id).map((g) => g.value),
                 bjb: mine.filter((r) => r.assessment.type === 'BJB').map((r) => ({ score: Number(r.score), max: Number(r.assessment.maxScore) })),
                 tjb: t ? { score: Number(t.score), max: Number(t.assessment.maxScore) } : null,
+                interim: mine.filter((r) => r.assessment.type === 'ARALYK').map((r) => ({ score: Number(r.score), max: Number(r.assessment.maxScore) })),
               },
-              DEFAULT_WEIGHTS,
+              usesInterim(parseInt(cls)) ? DEFAULT_PRIMARY_WEIGHTS : DEFAULT_WEIGHTS,
               DEFAULT_LEVELS,
             );
             return c.mark == null ? [] : [{ schoolId: school.id, quarterId: q.id, classId: classIds[cls], subjectId: subjects[subj], studentId: s.id, mark: c.mark, computedPct: c.pct }];
