@@ -48,6 +48,16 @@ export interface Plan {
 const norm = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 const LETTER_RE = /^[А-ЯӘҒҚҢӨҰҮҺІA-Z]{1,3}$/u;
 
+/**
+ * Литер сынып атауынан алынады («10 А» → «А»). Nexus-те `section` — бейін (ЖМБ/ҚГБ), литер емес,
+ * 1–9 сыныптарда ол бос. Атаудан табылмаса ғана `section` қолданылады.
+ */
+export function classLetter(l: Pick<NexusLesson, 'group_name' | 'grade_level' | 'section'>): string {
+  const m = (l.group_name ?? '').trim().toUpperCase().match(/^(\d{1,2})\s*[-–—]?\s*["«']?([А-ЯӘҒҚҢӨҰҮҺІA-Z]{1,3})["»']?$/u);
+  if (m && Number(m[1]) === l.grade_level) return m[2];
+  return (l.section ?? '').trim().toUpperCase();
+}
+
 /** Ең жиі кездесетін мән (тең болса — алфавит бойынша бірінші). */
 function mostFrequent(values: string[]): string {
   const c = new Map<string, number>();
@@ -75,7 +85,7 @@ export function buildPlan(lessons: NexusLesson[], existing: Existing): Plan {
       const byName = byEmail ?? existing.teachers.find((t) => norm(t.fullName) === norm(l.teacher_name));
       teachers.set(email, { email, fullName: l.teacher_name.trim(), existingId: byName?.id ?? null });
     }
-    const letter = (l.section ?? '').trim().toUpperCase();
+    const letter = classLetter(l);
     if (!LETTER_RE.test(letter)) {
       if (!skippedClasses.has(l.group_name)) warnings.push(`«${l.group_name}» сыныбының литері анықталмады — өткізіліп жіберілді`);
       skippedClasses.add(l.group_name);
