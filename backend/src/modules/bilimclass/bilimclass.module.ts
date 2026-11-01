@@ -162,10 +162,10 @@ export class BilimClassService {
 
     const sidOf = (name: string) => subjectId.get(normName(name));
     /**
-     * BilimClass тобын Ұстаздағы топпен сәйкестендіру:
-     * 1) мұғалімі бірдей топ (мысалы «Қыздар · Тынышбай» → Nexus-тің «1-топ · Тынышбай»),
-     *    егер ол мұғалім бұл пәнде екі жақта да бір ғана топты жүргізсе;
-     * 2) нөмірі бірдей топ («1 топ» = «1-топ»);
+     * BilimClass тобын Ұстаздағы топпен сәйкестендіру. BilimClass — топтардың негізгі дереккөзі:
+     * 1) нөмірі бар топ («1 топ» = «1-топ») — нөмірі бойынша; мұғалімі BilimClass-тағыға ауыстырылады;
+     * 2) нөмірсіз топ («Қыздар», «Ұлдар») — мұғалімі бірдей топ (мысалы Nexus-тің «1-топ · Тынышбай»),
+     *    егер ол мұғалім бұл пәнде екі жақта да бір ғана топты жүргізсе; топ атауы BilimClass-тағыға ауысады;
      * 3) атауы бірдей топ.
      */
     const resolved = new Map<string, (typeof existingGroups)[number]>();
@@ -174,15 +174,12 @@ export class BilimClassService {
       if (sid == null) continue;
       const same = existingGroups.filter((x) => x.subjectId === sid);
       const byKey = same.filter((x) => groupKey(x.name) === g.key);
-      // Мұғалімі бойынша (екі жақта да бұл мұғалімнің осы пәнде бір ғана тобы болса) — нөмірден басым,
-      // өйткені BilimClass пен Nexus-те топ нөмірлері ауысып кетуі мүмкін.
-      let hit: (typeof existingGroups)[number] | undefined;
-      if (g.teacherId) {
+      let hit: (typeof existingGroups)[number] | undefined = /^\d+$/.test(g.key) ? byKey[0] : undefined;
+      if (!hit && g.teacherId) {
         const mine = same.filter((x) => x.teacherId === g.teacherId);
         const imported = groups.filter((y) => sidOf(y.subject) === sid && y.teacherId === g.teacherId);
-        if (mine.length === 1 && imported.length === 1) hit = mine[0];
+        if (mine.length === 1 && imported.length === 1 && !groups.some((y) => y !== g && sidOf(y.subject) === sid && groupKey(mine[0].name) === y.key)) hit = mine[0];
       }
-      if (!hit && /^\d+$/.test(g.key)) hit = byKey.find((x) => !x.teacherId || !groups.some((y) => sidOf(y.subject) === sid && y.teacherId === x.teacherId)) ?? byKey[0];
       hit ??= byKey[0];
       if (hit) resolved.set(`${sid}|${g.key}`, hit);
     }
@@ -297,6 +294,7 @@ export class BilimClassService {
           let id: number;
           if (ex) {
             id = ex.id;
+            if (groupKey(ex.name) !== g.key) await tx.subjectGroup.update({ where: { id }, data: { name: g.name } });
             if (g.teacherId && ex.teacherId !== g.teacherId)
               await tx.subjectGroup.update({
                 where: { id },

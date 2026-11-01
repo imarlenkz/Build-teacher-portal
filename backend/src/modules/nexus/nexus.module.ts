@@ -16,6 +16,7 @@ import { AuditService } from '../audit/audit.service';
 import { ScopeService } from '../core/scope.service';
 import { ARGON_OPTS } from '../auth/auth.service';
 import { buildPlan, NexusLesson, Plan } from './nexus.plan';
+import { groupKey } from '../bilimclass/bilimclass.plan';
 
 class InstitutionInput {
   @IsString() @MinLength(1) @MaxLength(64) institutionId: string;
@@ -190,15 +191,24 @@ export class NexusService {
           assignmentId.set(`${a.classKey}|${a.subject}`, row.id);
         }
 
-        // Топтар: аты бойынша сәйкестендіріледі, мұғалімі жаңартылады. Оқушылар құрамын Nexus бермейді — оны әкімші бөледі.
+        // Топтар. Топтардың негізгі дереккөзі — BilimClass импорты мен әкімші, сондықтан Nexus:
+        //  - топты аты немесе нөмірі бойынша табады («1-топ» = «1 топ») және мұғалімі бос болса ғана толтырады;
+        //  - жаңа топты тек сыныптың бұл пәні әлі топқа бөлінбеген болса жасайды (қайталанған топ шықпауы үшін).
+        // Оқушылар құрамын Nexus бермейді — оны BilimClass импорты не әкімші бөледі.
         let createdGroups = 0;
+        const hadGroups = new Set<string>();
         for (const g of plan.groups) {
           const where = { classId: classId.get(g.classKey)!, subjectId: subjectId.get(g.subject)! };
-          const ex = await tx.subjectGroup.findFirst({ where: { ...where, name: g.name } });
-          if (ex) await tx.subjectGroup.update({ where: { id: ex.id }, data: { teacherId: teacherId.get(g.teacherEmail)! } });
-          else {
-            const order = await tx.subjectGroup.count({ where });
-            await tx.subjectGroup.create({ data: { ...where, schoolId: user.schoolId, name: g.name, order, teacherId: teacherId.get(g.teacherEmail)! } });
+          if (await tx.subjectGroup.count({ where })) hadGroups.add(`${where.classId}|${where.subjectId}`);
+        }
+        for (const g of plan.groups) {
+          const where = { classId: classId.get(g.classKey)!, subjectId: subjectId.get(g.subject)! };
+          const existing = await tx.subjectGroup.findMany({ where });
+          const ex = existing.find((x) => x.name === g.name) ?? existing.find((x) => groupKey(x.name) === groupKey(g.name));
+          if (ex) {
+            if (!ex.teacherId) await tx.subjectGroup.update({ where: { id: ex.id }, data: { teacherId: teacherId.get(g.teacherEmail)! } });
+          } else if (!hadGroups.has(`${where.classId}|${where.subjectId}`)) {
+            await tx.subjectGroup.create({ data: { ...where, schoolId: user.schoolId, name: g.name, order: existing.length, teacherId: teacherId.get(g.teacherEmail)! } });
             createdGroups++;
           }
         }
