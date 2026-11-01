@@ -1,4 +1,4 @@
-import { buildPlan, NexusLesson } from '../src/modules/nexus/nexus.plan';
+import { buildPlan, classLetter, NexusLesson } from '../src/modules/nexus/nexus.plan';
 
 const L = (o: Partial<NexusLesson>): NexusLesson => ({
   lesson_id: 'x',
@@ -27,7 +27,7 @@ describe('buildPlan', () => {
 
   it('matches teachers by email or name, classes by grade+letter, subjects by name', () => {
     const p = buildPlan(
-      [L({}), L({ date: '2026-11-09' }), L({ subject_name: 'ағылшын тілі', teacher_name: 'Жақыпова А.', teacher_email: 'J@school.kz', section: 'Ә', day_of_week: 2 })],
+      [L({}), L({ date: '2026-11-09' }), L({ subject_name: 'ағылшын тілі', teacher_name: 'Жақыпова А.', teacher_email: 'J@school.kz', group_name: '9 Ә', section: null, day_of_week: 2 })],
       existing,
     );
     expect(p.teachers.find((t) => t.email === 'akhmetova@school.kz')!.existingId).toBe(1);
@@ -56,6 +56,17 @@ describe('buildPlan', () => {
     ]);
     expect(p.assignments).toEqual([{ classKey: '9А', subject: 'Информатика', teacherEmail: 'a@s.kz' }]);
     expect(p.slots).toHaveLength(3);
+  });
+
+  it('takes the letter from the class name (Nexus section is a profile, often empty)', () => {
+    expect(classLetter({ group_name: '1 А', grade_level: 1, section: null })).toBe('А');
+    expect(classLetter({ group_name: '4 Ғ', grade_level: 4, section: null })).toBe('Ғ');
+    expect(classLetter({ group_name: '10 А', grade_level: 10, section: 'ЖМБ' })).toBe('А');
+    expect(classLetter({ group_name: '11 Ә', grade_level: 11, section: 'ҚГБ' })).toBe('Ә');
+    expect(classLetter({ group_name: 'Арнайы', grade_level: 9, section: 'Б' })).toBe('Б');
+    const p = buildPlan([L({ group_name: '10 А', grade_level: 10, section: 'ЖМБ' }), L({ group_name: '1 Ә', grade_level: 1, section: null })], existing);
+    expect(p.classes.map((c) => c.key)).toEqual(['1Ә', '10А']);
+    expect(p.warnings).toHaveLength(0);
   });
 
   it('skips classes without a usable letter and warns', () => {
