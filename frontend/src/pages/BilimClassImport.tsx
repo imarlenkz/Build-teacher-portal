@@ -1,16 +1,9 @@
-import { useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api/client";
-import { useToast } from "../lib/toast";
-import { ClassBatch, mergeBatches, readExport } from "../lib/bilimclass";
-import {
-  Badge,
-  Card,
-  ConfirmDialog,
-  DashboardCard,
-  Field,
-  Spinner,
-} from "../components/ui";
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '../api/client';
+import { useToast } from '../lib/toast';
+import { ClassBatch, mergeBatches, readExport } from '../lib/bilimclass';
+import { Badge, Card, ConfirmDialog, DashboardCard, Field, Spinner } from '../components/ui';
 
 interface ClassResult {
   applied: boolean;
@@ -30,8 +23,7 @@ interface ClassResult {
 
 type Row = { batch: ClassBatch; res?: ClassResult; error?: string };
 
-const sum = (rows: Row[], f: (r: ClassResult) => number) =>
-  rows.reduce((n, r) => n + (r.res ? f(r.res) : 0), 0);
+const sum = (rows: Row[], f: (r: ClassResult) => number) => rows.reduce((n, r) => n + (r.res ? f(r.res) : 0), 0);
 
 /** BilimClass экспортынан (CSV) пән топтарын және тоқсан бағаларын импорттау. */
 export function BilimClassImport() {
@@ -51,16 +43,12 @@ export function BilimClassImport() {
   const [confirm, setConfirm] = useState(false);
   const [applied, setApplied] = useState(false);
 
-  const run = async (
-    batches: ClassBatch[],
-    apply: boolean,
-    opts = { quarter, createSubjects },
-  ) => {
+  const run = async (batches: ClassBatch[], apply: boolean, opts = { quarter, createSubjects }) => {
     setBusy({ done: 0, total: batches.length, apply });
     const out: Row[] = [];
     for (const batch of batches) {
       try {
-        const res = await api.post<ClassResult>("/bilimclass/import", {
+        const res = await api.post<ClassResult>('/bilimclass/import', {
           ...batch,
           quarter: opts.quarter,
           createSubjects: opts.createSubjects,
@@ -74,10 +62,7 @@ export function BilimClassImport() {
         });
       }
       setBusy({ done: out.length, total: batches.length, apply });
-      setRows([
-        ...out,
-        ...batches.slice(out.length).map((b) => ({ batch: b })),
-      ]);
+      setRows([...out, ...batches.slice(out.length).map((b) => ({ batch: b }))]);
     }
     setBusy(null);
     return out;
@@ -94,7 +79,7 @@ export function BilimClassImport() {
         continue;
       }
       const r = readExport(await f.text());
-      if ("error" in r) errs.push(`${f.name}: ${r.error}`);
+      if ('error' in r) errs.push(`${f.name}: ${r.error}`);
       else parts.push(...r);
     }
     setFiles(Array.from(list).map((f) => f.name));
@@ -120,36 +105,20 @@ export function BilimClassImport() {
     setApplied(true);
     qc.invalidateQueries();
     const failed = out.filter((r) => r.error).length;
-    toast(
-      failed
-        ? `Импорт аяқталды, ${failed} сыныпта қате бар`
-        : `Импорт аяқталды: ${out.length} сынып`,
-      failed ? "error" : undefined,
-    );
+    toast(failed ? `Импорт аяқталды, ${failed} сыныпта қате бар` : `Импорт аяқталды: ${out.length} сынып`, failed ? 'error' : undefined);
   };
 
   const ready = rows.filter((r) => r.res?.portalClass);
-  const missingSubjects = [
-    ...new Set(rows.flatMap((r) => r.res?.missingSubjects ?? [])),
-  ];
+  const missingSubjects = [...new Set(rows.flatMap((r) => r.res?.missingSubjects ?? []))];
 
   return (
     <div className="stack">
-      <Card
-        title="BilimClass-тан импорттау"
-        sub="Пән топтары мен тоқсан бағалары (ФО, БЖБ, ТЖБ, аралық бағалау, тоқсандық баға) BilimClass экспортының CSV файлдарынан алынады"
-      >
+      <Card title="BilimClass-тан импорттау" sub="Пән топтары мен тоқсан бағалары (ФО, БЖБ, ТЖБ, аралық бағалау, тоқсандық баға) BilimClass экспортының CSV файлдарынан алынады">
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-          Файлдар: <b>groups</b> (class, subject, group, teacher, student) және{" "}
-          <b>grades</b> (class, subject, group, student, date, type, mark, max,
-          quarter_mark). Бірнеше файлды бірден таңдауға болады. Оқушылар
-          сыныптағы аты-жөні бойынша, топтар нөмірі бойынша сәйкестендіріледі.
-          Қайта импорттасаңыз, бағалар қайталанбайды, жаңартылады.
+          Файлдар: <b>groups</b> (class, subject, group, teacher, student) және <b>grades</b> (class, subject, group, student, date, type, mark, max, quarter_mark). Бірнеше файлды
+          бірден таңдауға болады. Оқушылар сыныптағы аты-жөні бойынша, топтар нөмірі бойынша сәйкестендіріледі. Қайта импорттасаңыз, бағалар қайталанбайды, жаңартылады.
         </div>
-        <div
-          className="row"
-          style={{ alignItems: "flex-end", flexWrap: "wrap" }}
-        >
+        <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <Field label="Тоқсан">
             <select
               className="select"
@@ -168,39 +137,21 @@ export function BilimClassImport() {
               ))}
             </select>
           </Field>
-          <input
-            ref={input}
-            type="file"
-            accept=".csv,text/csv"
-            multiple
-            hidden
-            onChange={(e) => (pick(e.target.files), (e.target.value = ""))}
-          />
-          <button
-            className="btn"
-            onClick={() => input.current?.click()}
-            disabled={!!busy}
-            style={{ marginBottom: 2 }}
-          >
+          <input ref={input} type="file" accept=".csv,text/csv" multiple hidden onChange={(e) => (pick(e.target.files), (e.target.value = ''))} />
+          <button className="btn" onClick={() => input.current?.click()} disabled={!!busy} style={{ marginBottom: 2 }}>
             CSV файлдарын таңдау
           </button>
           <span className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-            {files.length ? `${files.length} файл` : "файл таңдалмаған"}
+            {files.length ? `${files.length} файл` : 'файл таңдалмаған'}
           </span>
           <span className="grow" />
-          <button
-            className="btn primary"
-            disabled={!!busy || !ready.length || applied}
-            onClick={() => setConfirm(true)}
-            style={{ marginBottom: 2 }}
-          >
+          <button className="btn primary" disabled={!!busy || !ready.length || applied} onClick={() => setConfirm(true)} style={{ marginBottom: 2 }}>
             {busy?.apply && <Spinner />} Импорттау ({ready.length} сынып)
           </button>
         </div>
         {busy && (
           <div className="muted" style={{ marginTop: 10, fontSize: 12.5 }}>
-            <Spinner /> {busy.apply ? "Сақталуда" : "Тексерілуде"}: {busy.done}{" "}
-            / {busy.total} сынып
+            <Spinner /> {busy.apply ? 'Сақталуда' : 'Тексерілуде'}: {busy.done} / {busy.total} сынып
           </div>
         )}
         {fileErrors.length > 0 && (
@@ -213,50 +164,23 @@ export function BilimClassImport() {
       </Card>
 
       {rows.some((r) => r.res) && (
-        <Card
-          title={applied ? "Импорт нәтижесі" : "Алдын ала қарау"}
-          sub={applied ? "Деректер сақталды" : "Әзірге ештеңе сақталған жоқ"}
-        >
+        <Card title={applied ? 'Импорт нәтижесі' : 'Алдын ала қарау'} sub={applied ? 'Деректер сақталды' : 'Әзірге ештеңе сақталған жоқ'}>
           <div className="grid-auto" style={{ gap: 10, marginBottom: 12 }}>
-            <DashboardCard
-              label="Сыныптар"
-              value={`${ready.length} / ${rows.length}`}
-              sub="Ұстазда табылды"
-            />
-            <DashboardCard
-              label="Оқушылар"
-              value={sum(rows, (r) => r.students.matched)}
-              sub={`табылмады: ${sum(rows, (r) => r.students.unmatched.length)}`}
-            />
-            <DashboardCard
-              label="Пән топтары"
-              value={sum(rows, (r) => r.groups.total)}
-              sub={`жаңа: ${sum(rows, (r) => r.groups.create)}`}
-            />
-            <DashboardCard
-              label="ФО бағалары"
-              value={sum(rows, (r) => r.fo.marks)}
-              sub={`${sum(rows, (r) => r.fo.columns)} баған`}
-            />
-            <DashboardCard
-              label="БЖБ / ТЖБ / аралық"
-              value={sum(rows, (r) => r.summative.results)}
-              sub={`${sum(rows, (r) => r.summative.total)} жұмыс`}
-            />
-            <DashboardCard
-              label="Тоқсандық баға"
-              value={sum(rows, (r) => r.quarterMarks)}
-              sub={`өткізілген жол: ${sum(rows, (r) => r.skipped)}`}
-            />
+            <DashboardCard label="Сыныптар" value={`${ready.length} / ${rows.length}`} sub="Ұстазда табылды" />
+            <DashboardCard label="Оқушылар" value={sum(rows, (r) => r.students.matched)} sub={`табылмады: ${sum(rows, (r) => r.students.unmatched.length)}`} />
+            <DashboardCard label="Пән топтары" value={sum(rows, (r) => r.groups.total)} sub={`жаңа: ${sum(rows, (r) => r.groups.create)}`} />
+            <DashboardCard label="ФО бағалары" value={sum(rows, (r) => r.fo.marks)} sub={`${sum(rows, (r) => r.fo.columns)} баған`} />
+            <DashboardCard label="БЖБ / ТЖБ / аралық" value={sum(rows, (r) => r.summative.results)} sub={`${sum(rows, (r) => r.summative.total)} жұмыс`} />
+            <DashboardCard label="Тоқсандық баға" value={sum(rows, (r) => r.quarterMarks)} sub={`өткізілген жол: ${sum(rows, (r) => r.skipped)}`} />
           </div>
           {missingSubjects.length > 0 && (
             <div className="err-box" style={{ marginBottom: 12 }}>
-              Ұстазда жоқ пәндер: {missingSubjects.join(", ")}.
+              Ұстазда жоқ пәндер: {missingSubjects.join(', ')}.
               <label
                 style={{
-                  display: "flex",
+                  display: 'flex',
                   gap: 6,
-                  alignItems: "center",
+                  alignItems: 'center',
                   marginTop: 6,
                 }}
               >
@@ -269,9 +193,7 @@ export function BilimClassImport() {
                     preview({ quarter, createSubjects: e.target.checked });
                   }}
                 />
-                Бұл пәндерді жасап, бағаларын да импорттау (белгіленбесе —
-                өткізіледі; Админ › Пәндер бөлімінде атын өзгертіп, қайта
-                импорттауға болады)
+                Бұл пәндерді жасап, бағаларын да импорттау (белгіленбесе — өткізіледі; Админ › Пәндер бөлімінде атын өзгертіп, қайта импорттауға болады)
               </label>
             </div>
           )}
@@ -292,41 +214,28 @@ export function BilimClassImport() {
               {rows.map(({ batch, res, error }) => (
                 <tr key={batch.className}>
                   <td>{batch.className}</td>
-                  <td>
-                    {res?.portalClass ??
-                      (error || res ? (
-                        <Badge tone="bad">жоқ</Badge>
-                      ) : (
-                        <Spinner />
-                      ))}
-                  </td>
-                  <td className="num">
-                    {res ? `${res.students.matched}/${res.students.file}` : ""}
-                  </td>
-                  <td className="num">{res?.groups.total ?? ""}</td>
-                  <td className="num">{res?.fo.marks ?? ""}</td>
-                  <td className="num">{res?.summative.results ?? ""}</td>
-                  <td className="num">{res?.quarterMarks ?? ""}</td>
+                  <td>{res?.portalClass ?? (error || res ? <Badge tone="bad">жоқ</Badge> : <Spinner />)}</td>
+                  <td className="num">{res ? `${res.students.matched}/${res.students.file}` : ''}</td>
+                  <td className="num">{res?.groups.total ?? ''}</td>
+                  <td className="num">{res?.fo.marks ?? ''}</td>
+                  <td className="num">{res?.summative.results ?? ''}</td>
+                  <td className="num">{res?.quarterMarks ?? ''}</td>
                   <td style={{ fontSize: 12.5, maxWidth: 420 }}>
                     {error && <div className="c-bad">{error}</div>}
                     {res && res.students.unmatched.length > 0 && (
                       <details>
-                        <summary style={{ cursor: "pointer" }}>
-                          <Badge tone="warn">
-                            {res.students.unmatched.length}
-                          </Badge>{" "}
-                          оқушы табылмады
+                        <summary style={{ cursor: 'pointer' }}>
+                          <Badge tone="warn">{res.students.unmatched.length}</Badge> оқушы табылмады
                         </summary>
-                        {res.students.unmatched.join(", ")}
+                        {res.students.unmatched.join(', ')}
                       </details>
                     )}
                     {res && res.warnings.length > 0 && (
                       <details>
-                        <summary style={{ cursor: "pointer" }}>
-                          <Badge tone="warn">{res.warnings.length}</Badge>{" "}
-                          ескерту
+                        <summary style={{ cursor: 'pointer' }}>
+                          <Badge tone="warn">{res.warnings.length}</Badge> ескерту
                         </summary>
-                        <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                        <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
                           {res.warnings.map((w) => (
                             <li key={w}>{w}</li>
                           ))}

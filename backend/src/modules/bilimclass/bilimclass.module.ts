@@ -1,56 +1,24 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  HttpCode,
-  Injectable,
-  Module,
-  Post,
-} from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
-import { Throttle } from "@nestjs/throttler";
-import { Transform, Type } from "class-transformer";
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsBoolean,
-  IsInt,
-  IsOptional,
-  IsString,
-  Max,
-  MaxLength,
-  Min,
-  ValidateNested,
-} from "class-validator";
-import { PrismaService } from "../../common/prisma/prisma.service";
-import { CacheService } from "../../common/cache/cache.service";
-import {
-  CurrentUser,
-  ReqMeta,
-  RequirePermissions,
-} from "../../common/decorators";
-import { P } from "../../common/permissions";
-import type { AuthUser, RequestMeta } from "../../common/auth-user";
-import { fmtDate, fmtDot, toDate } from "../../common/utils/dates";
-import { AuditService } from "../audit/audit.service";
-import { ScopeService } from "../core/scope.service";
-import {
-  buildPlan,
-  groupKey,
-  normName,
-  parseClassName,
-  Plan,
-} from "./bilimclass.plan";
+import { BadRequestException, Body, Controller, HttpCode, Injectable, Module, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
+import { CurrentUser, ReqMeta, RequirePermissions } from '../../common/decorators';
+import { P } from '../../common/permissions';
+import type { AuthUser, RequestMeta } from '../../common/auth-user';
+import { fmtDate, fmtDot, toDate } from '../../common/utils/dates';
+import { AuditService } from '../audit/audit.service';
+import { ScopeService } from '../core/scope.service';
+import { buildPlan, groupKey, normName, parseClassName, Plan } from './bilimclass.plan';
 
-const str = ({ value }: { value: unknown }) =>
-  value == null ? null : String(value).trim();
+const str = ({ value }: { value: unknown }) => (value == null ? null : String(value).trim());
 
 class GroupRowInput {
   @Transform(str) @IsString() @MaxLength(160) subject: string;
   @Transform(str) @IsString() @MaxLength(80) group: string;
-  @IsOptional() @Transform(str) @IsString() @MaxLength(160) teacher?:
-    | string
-    | null;
+  @IsOptional() @Transform(str) @IsString() @MaxLength(160) teacher?: string | null;
   @Transform(str) @IsString() @MaxLength(200) student: string;
 }
 
@@ -62,9 +30,7 @@ class GradeRowInput {
   @IsOptional() @Transform(str) @IsString() @MaxLength(30) type?: string | null;
   @IsOptional() @Transform(str) @IsString() @MaxLength(20) mark?: string | null;
   @IsOptional() @Transform(str) @IsString() @MaxLength(20) max?: string | null;
-  @IsOptional() @Transform(str) @IsString() @MaxLength(20) quarterMark?:
-    | string
-    | null;
+  @IsOptional() @Transform(str) @IsString() @MaxLength(20) quarterMark?: string | null;
 }
 
 /** Бір сыныптың BilimClass деректері (фронтенд CSV файлдарын сыныптарға бөліп, бір-бірлеп жібереді). */
@@ -91,7 +57,7 @@ export interface ClassImportResult {
   className: string;
   portalClass: string | null;
   quarter: number;
-  students: Plan["students"];
+  students: Plan['students'];
   subjects: string[];
   missingSubjects: string[];
   groups: { total: number; create: number; members: number };
@@ -111,17 +77,10 @@ export class BilimClassService {
     private readonly cache: CacheService,
   ) {}
 
-  async importClass(
-    user: AuthUser,
-    dto: BilimClassClassInput,
-    meta: RequestMeta,
-  ): Promise<ClassImportResult> {
+  async importClass(user: AuthUser, dto: BilimClassClassInput, meta: RequestMeta): Promise<ClassImportResult> {
     const year = await this.scope.currentYear(user.schoolId);
     const quarter = year.quarters.find((q) => q.number === dto.quarter);
-    if (!quarter)
-      throw new BadRequestException(
-        `${year.name} оқу жылында ${dto.quarter}-тоқсан бапталмаған`,
-      );
+    if (!quarter) throw new BadRequestException(`${year.name} оқу жылында ${dto.quarter}-тоқсан бапталмаған`);
     const parsed = parseClassName(dto.className);
     const empty = (warnings: string[]): ClassImportResult => ({
       applied: false,
@@ -129,9 +88,7 @@ export class BilimClassService {
       portalClass: null,
       quarter: dto.quarter,
       students: {
-        file: new Set(
-          [...dto.groups, ...dto.grades].map((r) => normName(r.student)),
-        ).size,
+        file: new Set([...dto.groups, ...dto.grades].map((r) => normName(r.student))).size,
         matched: 0,
         unmatched: [],
       },
@@ -144,10 +101,7 @@ export class BilimClassService {
       skipped: dto.groups.length + dto.grades.length,
       warnings,
     });
-    if (!parsed)
-      return empty([
-        `«${dto.className}» сынып атауы танылмады — сынып өткізілді`,
-      ]);
+    if (!parsed) return empty([`«${dto.className}» сынып атауы танылмады — сынып өткізілді`]);
     const cls = await this.prisma.class.findFirst({
       where: {
         schoolId: user.schoolId,
@@ -156,10 +110,7 @@ export class BilimClassService {
         letter: parsed.letter,
       },
     });
-    if (!cls)
-      return empty([
-        `Ұстазда ${parsed.grade} ${parsed.letter} сыныбы жоқ (${year.name}) — сынып өткізілді`,
-      ]);
+    if (!cls) return empty([`Ұстазда ${parsed.grade} ${parsed.letter} сыныбы жоқ (${year.name}) — сынып өткізілді`]);
 
     const [students, subjects, teachers, existingGroups] = await Promise.all([
       this.prisma.student.findMany({
@@ -188,31 +139,22 @@ export class BilimClassService {
     const warnings = [...plan.warnings];
     const createSubjects = !!dto.createSubjects;
     const subjectId = new Map(subjects.map((s) => [normName(s.name), s.id]));
-    const hasSubject = (name: string) =>
-      subjectId.has(normName(name)) || createSubjects;
-    if (plan.missingSubjects.length && !createSubjects)
-      warnings.unshift(
-        `Ұстазда жоқ пәндер өткізіледі: ${plan.missingSubjects.join(", ")}`,
-      );
+    const hasSubject = (name: string) => subjectId.has(normName(name)) || createSubjects;
+    if (plan.missingSubjects.length && !createSubjects) warnings.unshift(`Ұстазда жоқ пәндер өткізіледі: ${plan.missingSubjects.join(', ')}`);
 
     const groups = plan.groups.filter((g) => hasSubject(g.subject));
     const fo = plan.fo.filter((c) => hasSubject(c.subject));
     const sums = plan.summatives.filter((s) => hasSubject(s.subject));
     const finals = plan.quarterMarks.filter((q) => hasSubject(q.subject));
 
-    const existingGroup = (sid: number | undefined, key: string) =>
-      sid == null
-        ? undefined
-        : existingGroups.find(
-            (g) => g.subjectId === sid && groupKey(g.name) === key,
-          );
+    const existingGroup = (sid: number | undefined, key: string) => (sid == null ? undefined : existingGroups.find((g) => g.subjectId === sid && groupKey(g.name) === key));
 
     // Бар бағандар мен бағалауларды алдын ала жүктеу (preview санағы мен apply үшін).
     const [columns, assessments] = await Promise.all([
       this.prisma.gradeColumn.findMany({
         where: { classId: cls.id, quarterId: quarter.id },
         select: { id: true, subjectId: true, groupId: true, date: true },
-        orderBy: { id: "asc" },
+        orderBy: { id: 'asc' },
       }),
       this.prisma.assessment.findMany({
         where: { classId: cls.id, quarterId: quarter.id },
@@ -226,50 +168,18 @@ export class BilimClassService {
         },
       }),
     ]);
-    const groupIdFor = (
-      sid: number | undefined,
-      key: string | null,
-      created?: Map<string, number>,
-    ) => {
+    const groupIdFor = (sid: number | undefined, key: string | null, created?: Map<string, number>) => {
       if (key == null) return null;
-      return (
-        existingGroup(sid, key)?.id ?? created?.get(`${sid}|${key}`) ?? null
-      );
+      return existingGroup(sid, key)?.id ?? created?.get(`${sid}|${key}`) ?? null;
     };
-    const findColumn = (
-      sid: number | undefined,
-      gid: number | null,
-      date: string,
-      slot: number,
-    ) =>
-      columns.filter(
-        (c) =>
-          c.subjectId === sid && c.groupId === gid && fmtDate(c.date) === date,
-      )[slot];
-    const findAssessment = (
-      sid: number | undefined,
-      gid: number | null,
-      s: Plan["summatives"][number],
-    ) =>
-      assessments.find(
-        (a) =>
-          a.subjectId === sid &&
-          a.groupId === gid &&
-          a.type === s.type &&
-          (fmtDate(a.date) ?? null) === s.date &&
-          Number(a.maxScore) === s.maxScore,
-      );
+    const findColumn = (sid: number | undefined, gid: number | null, date: string, slot: number) =>
+      columns.filter((c) => c.subjectId === sid && c.groupId === gid && fmtDate(c.date) === date)[slot];
+    const findAssessment = (sid: number | undefined, gid: number | null, s: Plan['summatives'][number]) =>
+      assessments.find((a) => a.subjectId === sid && a.groupId === gid && a.type === s.type && (fmtDate(a.date) ?? null) === s.date && Number(a.maxScore) === s.maxScore);
 
     const sidOf = (name: string) => subjectId.get(normName(name));
-    const outside = fo.filter(
-      (c) =>
-        c.date < fmtDate(quarter.startDate)! ||
-        c.date > fmtDate(quarter.endDate)!,
-    ).length;
-    if (outside)
-      warnings.push(
-        `${outside} ФО бағаны ${dto.quarter}-тоқсан аралығынан тыс (${fmtDot(quarter.startDate)} – ${fmtDot(quarter.endDate)}), бірақ импортталады`,
-      );
+    const outside = fo.filter((c) => c.date < fmtDate(quarter.startDate)! || c.date > fmtDate(quarter.endDate)!).length;
+    if (outside) warnings.push(`${outside} ФО бағаны ${dto.quarter}-тоқсан аралығынан тыс (${fmtDot(quarter.startDate)} – ${fmtDot(quarter.endDate)}), бірақ импортталады`);
 
     const result: ClassImportResult = {
       applied: false,
@@ -281,16 +191,14 @@ export class BilimClassService {
       missingSubjects: plan.missingSubjects,
       groups: {
         total: groups.length,
-        create: groups.filter((g) => !existingGroup(sidOf(g.subject), g.key))
-          .length,
+        create: groups.filter((g) => !existingGroup(sidOf(g.subject), g.key)).length,
         members: groups.reduce((n, g) => n + g.members.length, 0),
       },
       fo: {
         columns: fo.length,
         create: fo.filter((c) => {
           const sid = sidOf(c.subject);
-          const g =
-            c.groupKey == null ? null : existingGroup(sid, c.groupKey)?.id;
+          const g = c.groupKey == null ? null : existingGroup(sid, c.groupKey)?.id;
           return g === undefined || !findColumn(sid, g ?? null, c.date, c.slot);
         }).length,
         marks: fo.reduce((n, c) => n + c.marks.length, 0),
@@ -299,8 +207,7 @@ export class BilimClassService {
         total: sums.length,
         create: sums.filter((s) => {
           const sid = sidOf(s.subject);
-          const g =
-            s.groupKey == null ? null : existingGroup(sid, s.groupKey)?.id;
+          const g = s.groupKey == null ? null : existingGroup(sid, s.groupKey)?.id;
           return g === undefined || !findAssessment(sid, g ?? null, s);
         }).length,
         results: sums.reduce((n, s) => n + s.results.length, 0),
@@ -384,7 +291,7 @@ export class BilimClassService {
                 quarterId: quarter.id,
                 groupId: gid,
                 date: toDate(c.date),
-                topic: "BilimClass",
+                topic: 'BilimClass',
               },
               select: { id: true, subjectId: true, groupId: true, date: true },
             });
@@ -450,10 +357,7 @@ export class BilimClassService {
           });
         }
         // Тоқсандық бағалар
-        const bySubject = new Map<
-          number,
-          { studentId: number; mark: number }[]
-        >();
+        const bySubject = new Map<number, { studentId: number; mark: number }[]>();
         for (const q of finals) {
           const sid = sidOf(q.subject)!;
           bySubject.set(sid, [...(bySubject.get(sid) ?? []), q]);
@@ -482,8 +386,8 @@ export class BilimClassService {
         await this.audit.record(
           user,
           {
-            action: "BilimClass-тан импорттады",
-            entity: "class",
+            action: 'BilimClass-тан импорттады',
+            entity: 'class',
             entityId: cls.id,
             summary: `${cls.name} · ${dto.quarter}-тоқсан: ${result.groups.total} топ, ${result.fo.marks} ФО, ${result.summative.results} БЖБ/ТЖБ/аралық нәтиже, ${result.quarterMarks} тоқсандық баға`,
             after: {
@@ -506,21 +410,17 @@ export class BilimClassService {
   }
 }
 
-@ApiTags("bilimclass")
-@Controller("bilimclass")
+@ApiTags('bilimclass')
+@Controller('bilimclass')
 @RequirePermissions(P.CLASSES_MANAGE)
 class BilimClassController {
   constructor(private readonly svc: BilimClassService) {}
 
   /** Бір сыныптың топтары мен бағаларын импорттау: apply=false — алдын ала қарау, apply=true — сақтау. */
-  @Post("import")
+  @Post('import')
   @HttpCode(200)
   @Throttle({ default: { limit: 300, ttl: 60_000 } })
-  importClass(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: BilimClassClassInput,
-    @ReqMeta() meta: RequestMeta,
-  ) {
+  importClass(@CurrentUser() user: AuthUser, @Body() dto: BilimClassClassInput, @ReqMeta() meta: RequestMeta) {
     return this.svc.importClass(user, dto, meta);
   }
 }
