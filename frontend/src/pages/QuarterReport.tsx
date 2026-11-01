@@ -32,6 +32,8 @@ interface Report {
     className: string;
     subject: string;
     teacher: string;
+    groupId: number | null;
+    groups: { id: number; name: string; teacher: string | null; size: number }[];
     generatedAt: string;
     generatedBy: string;
     status: 'DRAFT' | 'SUBMITTED';
@@ -77,7 +79,7 @@ export default function QuarterReport() {
   const { can, me } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
-  const [s, set] = useUrlState({ classId: 0, subjectId: 0, quarterId: 0 });
+  const [s, set] = useUrlState({ classId: 0, subjectId: 0, quarterId: 0, groupId: 0 });
   useEffect(() => {
     if (s.quarterId && ref.years.some((y) => y.quarters.some((q) => q.id === s.quarterId))) setQuarterId(s.quarterId);
     if (s.quarterId) set({ quarterId: 0 });
@@ -99,7 +101,8 @@ export default function QuarterReport() {
   }, [cls, can, myTeacherName, ref, classId]);
   const subjectId = subjects.some((x) => x.subjectId === s.subjectId) ? s.subjectId : (subjects[0]?.subjectId ?? 0);
 
-  const key = { quarterId, classId, subjectId };
+  const groupId = s.groupId;
+  const key = { quarterId, classId, subjectId, ...(groupId ? { groupId } : {}) };
   const report = useQuery({ queryKey: ['report', key], queryFn: () => api.get<Report>('/reports/quarter', key), enabled: !!classId && !!subjectId, placeholderData: keepPreviousData });
   const status = useQuery({ queryKey: ['report-status', quarterId], queryFn: () => api.get<StatusRow[]>('/reports/quarter/status', { quarterId }) });
   const [summary, setSummary] = useState('');
@@ -112,7 +115,7 @@ export default function QuarterReport() {
   }, [report.data]);
 
   const submit = useMutation({
-    mutationFn: () => api.post('/reports/quarter/submit', { ...key, summary }),
+    mutationFn: () => api.post('/reports/quarter/submit', { quarterId, classId, subjectId, summary }),
     onSuccess: () => {
       toast('Есеп тапсырылды');
       qc.invalidateQueries({ queryKey: ['report'] });
@@ -159,7 +162,7 @@ export default function QuarterReport() {
             onChange={(e) => {
               const y = ref.years.find((x) => x.id === Number(e.target.value))!;
               setQuarterId(y.quarters[0].id);
-              set({ classId: 0, subjectId: 0 });
+              set({ classId: 0, subjectId: 0, groupId: 0 });
             }}
           >
             {ref.years.map((y) => (
@@ -179,7 +182,7 @@ export default function QuarterReport() {
           </select>
         </Field>
         <Field label="Сынып">
-          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0 })}>
+          <select className="select" value={classId} onChange={(e) => set({ classId: Number(e.target.value), subjectId: 0, groupId: 0 })}>
             {classList.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -188,7 +191,7 @@ export default function QuarterReport() {
           </select>
         </Field>
         <Field label="Пән">
-          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value) })}>
+          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value), groupId: 0 })}>
             {subjects.map((x) => (
               <option key={x.subjectId} value={x.subjectId}>
                 {x.subject}
@@ -196,6 +199,19 @@ export default function QuarterReport() {
             ))}
           </select>
         </Field>
+        {!!report.data?.meta.groups.length && (
+          <Field label="Топ">
+            <select className="select" value={groupId} onChange={(e) => set({ groupId: Number(e.target.value) })}>
+              <option value={0}>Барлық сынып</option>
+              {report.data.meta.groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.teacher ? ` · ${g.teacher}` : ''} · {g.size}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <span className="muted" style={{ paddingBottom: 8 }}>
           Есеп деректер бойынша автоматты құрылады
         </span>
@@ -237,7 +253,12 @@ export default function QuarterReport() {
                   <button className="btn" onClick={() => setEditing((x) => !x)}>
                     {editing ? 'Алдын ала қарау' : 'Қорытындыны өңдеу'}
                   </button>
-                  <button className="btn primary" disabled={submit.isPending || (!d.completeness.hasBjb && !d.completeness.hasTjb)} onClick={() => submit.mutate()}>
+                  <button
+                    className="btn primary"
+                    disabled={submit.isPending || !!groupId || (!d.completeness.hasBjb && !d.completeness.hasTjb)}
+                    title={groupId ? 'Есеп бүкіл сынып бойынша тапсырылады — «Барлық сынып» таңдаңыз' : undefined}
+                    onClick={() => submit.mutate()}
+                  >
                     {submit.isPending && <Spinner />} {d.meta.status === 'SUBMITTED' ? 'Қайта тапсыру' : 'Есепті тапсыру'}
                   </button>
                 </div>
@@ -258,7 +279,7 @@ export default function QuarterReport() {
                     className="bar-btn row"
                     style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}
                     aria-pressed={x.classId === classId && x.subjectId === subjectId}
-                    onClick={() => set({ classId: x.classId, subjectId: x.subjectId })}
+                    onClick={() => set({ classId: x.classId, subjectId: x.subjectId, groupId: 0 })}
                   >
                     <span style={{ minWidth: 0 }}>
                       <b style={{ fontWeight: 500 }}>
