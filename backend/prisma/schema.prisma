@@ -1,0 +1,662 @@
+// «Ұстаз» — мектеп порталының дерекқор схемасы.
+// Multi-tenant: мектепке тиесілі әр жазбада school_id бар.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum RoleCode {
+  ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum Gender {
+  M
+  F
+}
+
+enum StudentStatus {
+  ACTIVE
+  LEFT
+  EXPELLED
+}
+
+enum MovementType {
+  ADMITTED // Қабылданды
+  TRANSFERRED_CLASS // Басқа сыныпқа ауысты
+  ARRIVED_FROM_SCHOOL // Басқа мектептен келді
+  LEFT_TO_SCHOOL // Басқа мектепке кетті
+  EXPELLED // Мектептен шығарылды
+  READMITTED // Қайта қабылданды
+}
+
+enum AttendanceStatus {
+  P // Қатысты
+  N // Себепсіз
+  S // Себепті
+  A // Ауру
+  K // Кешікті (қатысқандарға кіреді)
+  O // Басқа
+}
+
+enum AssessmentType {
+  BJB // БЖБ — бөлім бойынша жиынтық бағалау
+  TJB // ТЖБ — тоқсан бойынша жиынтық бағалау
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum BackupKind {
+  MANUAL
+  AUTO
+}
+
+enum BackupStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+// ───────────────────────── Identity ─────────────────────────
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  code        RoleCode @unique
+  name        String
+  permissions String[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model School {
+  id        Int      @id @default(autoincrement())
+  name      String
+  shortName String   @map("short_name")
+  address   String?
+  city      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users            User[]
+  teachers         Teacher[]
+  students         Student[]
+  classes          Class[]
+  subjects         Subject[]
+  schoolYears      SchoolYear[]
+  movements        StudentMovement[]
+  lessons          Lesson[]
+  assessments      Assessment[]
+  levelRanges      LevelRange[]
+  settings         SchoolSettings?
+  quarterReports   QuarterReport[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  timetable        TimetableSlot[]
+  assignments      TeachingAssignment[]
+  attendanceReason AttendanceReason[]
+
+  @@map("schools")
+}
+
+model User {
+  id             Int        @id @default(autoincrement())
+  schoolId       Int?       @map("school_id")
+  roleId         Int        @map("role_id")
+  login          String     @unique
+  passwordHash   String     @map("password_hash")
+  fullName       String     @map("full_name")
+  title          String?
+  email          String?
+  phone          String?
+  status         UserStatus @default(ACTIVE)
+  locale         String     @default("kk")
+  failedLogins   Int        @default(0) @map("failed_logins")
+  lockedUntil    DateTime?  @map("locked_until")
+  lastLoginAt    DateTime?  @map("last_login_at")
+  passwordChangedAt DateTime @default(now()) @map("password_changed_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  deletedAt      DateTime?  @map("deleted_at")
+
+  school          School?          @relation(fields: [schoolId], references: [id])
+  role            Role             @relation(fields: [roleId], references: [id])
+  teacher         Teacher?
+  sessions        RefreshSession[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]       @relation("AuditActor")
+  movementsMade   StudentMovement[] @relation("MovementAuthor")
+  backups         Backup[]
+
+  @@index([schoolId])
+  @@map("users")
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    Int       @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  family    String    @db.Uuid
+  userAgent String?   @map("user_agent")
+  ip        String?
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@map("refresh_sessions")
+}
+
+model Teacher {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
+  schoolId  Int      @map("school_id")
+  position  String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school         School               @relation(fields: [schoolId], references: [id])
+  homeroomOf     Class[]              @relation("Homeroom")
+  assignments    TeachingAssignment[]
+  lessons        Lesson[]
+  assessments    Assessment[]
+  quarterReports QuarterReport[]
+
+  @@index([schoolId])
+  @@map("teachers")
+}
+
+// ───────────────────────── Academic structure ─────────────────────────
+
+model SchoolYear {
+  id        Int      @id @default(autoincrement())
+  schoolId  Int      @map("school_id")
+  name      String
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  isCurrent Boolean  @default(false) @map("is_current")
+
+  school   School    @relation(fields: [schoolId], references: [id])
+  quarters Quarter[]
+  classes  Class[]
+  assignments TeachingAssignment[]
+
+  @@unique([schoolId, name])
+  @@map("school_years")
+}
+
+model Quarter {
+  id           Int      @id @default(autoincrement())
+  schoolYearId Int      @map("school_year_id")
+  number       Int
+  startDate    DateTime @map("start_date") @db.Date
+  endDate      DateTime @map("end_date") @db.Date
+  reportDueDate DateTime? @map("report_due_date") @db.Date
+
+  schoolYear     SchoolYear      @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+  assessments    Assessment[]
+  quarterReports QuarterReport[]
+
+  @@unique([schoolYearId, number])
+  @@map("quarters")
+}
+
+model Class {
+  id                Int      @id @default(autoincrement())
+  schoolId          Int      @map("school_id")
+  schoolYearId      Int      @map("school_year_id")
+  grade             Int
+  letter            String
+  name              String
+  homeroomTeacherId Int?     @map("homeroom_teacher_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  school          School               @relation(fields: [schoolId], references: [id])
+  schoolYear      SchoolYear           @relation(fields: [schoolYearId], references: [id])
+  homeroomTeacher Teacher?             @relation("Homeroom", fields: [homeroomTeacherId], references: [id], onDelete: SetNull)
+  students        Student[]
+  assignments     TeachingAssignment[]
+  lessons         Lesson[]
+  assessments     Assessment[]
+  movementsFrom   StudentMovement[]    @relation("MovementFrom")
+  movementsTo     StudentMovement[]    @relation("MovementTo")
+  quarterReports  QuarterReport[]
+
+  @@unique([schoolId, schoolYearId, name])
+  @@map("classes")
+}
+
+model Subject {
+  id        Int    @id @default(autoincrement())
+  schoolId  Int    @map("school_id")
+  name      String
+  shortName String? @map("short_name")
+
+  school         School               @relation(fields: [schoolId], references: [id])
+  assignments    TeachingAssignment[]
+  lessons        Lesson[]
+  assessments    Assessment[]
+  quarterReports QuarterReport[]
+
+  @@unique([schoolId, name])
+  @@map("subjects")
+}
+
+/// Мұғалімнің сыныпта пәнді жүргізуі. Мұғалімнің «өз сыныптары» осы кестеден анықталады.
+model TeachingAssignment {
+  id           Int @id @default(autoincrement())
+  schoolId     Int @map("school_id")
+  schoolYearId Int @map("school_year_id")
+  classId      Int @map("class_id")
+  subjectId    Int @map("subject_id")
+  teacherId    Int @map("teacher_id")
+
+  school     School          @relation(fields: [schoolId], references: [id])
+  schoolYear SchoolYear      @relation(fields: [schoolYearId], references: [id])
+  class      Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject    Subject         @relation(fields: [subjectId], references: [id])
+  teacher    Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  slots      TimetableSlot[]
+
+  @@unique([classId, subjectId, schoolYearId])
+  @@index([teacherId])
+  @@map("teaching_assignments")
+}
+
+/// Сабақ кестесі: апта күні + сабақ нөмірі.
+model TimetableSlot {
+  id           Int    @id @default(autoincrement())
+  schoolId     Int    @map("school_id")
+  assignmentId Int    @map("assignment_id")
+  weekday      Int // 1 = Дүйсенбі … 6 = Сенбі
+  period       Int
+  startTime    String @map("start_time")
+  endTime      String @map("end_time")
+
+  school     School             @relation(fields: [schoolId], references: [id])
+  assignment TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, weekday, period])
+  @@index([schoolId, weekday])
+  @@map("timetable_slots")
+}
+
+// ───────────────────────── Students ─────────────────────────
+
+model Nationality {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  sortOrder Int       @default(100) @map("sort_order")
+  students  Student[]
+
+  @@map("nationalities")
+}
+
+model Student {
+  id             Int           @id @default(autoincrement())
+  schoolId       Int           @map("school_id")
+  classId        Int?          @map("class_id")
+  studentCode    String        @map("student_code")
+  lastName       String        @map("last_name")
+  firstName      String        @map("first_name")
+  middleName     String?       @map("middle_name")
+  fullName       String        @map("full_name")
+  gender         Gender
+  birthDate      DateTime      @map("birth_date") @db.Date
+  nationalityId  Int?          @map("nationality_id")
+  /// AES-256-GCM шифрланған ЖСН. Ашық түрде сақталмайды.
+  iinEncrypted   String?       @map("iin_encrypted")
+  iinLast4       String?       @map("iin_last4")
+  /// Бірегейлікті тексеру үшін HMAC-SHA256.
+  iinHash        String?       @map("iin_hash")
+  phone          String?
+  parentName     String?       @map("parent_name")
+  parentPhone    String?       @map("parent_phone")
+  enrolledAt     DateTime?     @map("enrolled_at") @db.Date
+  previousSchool String?       @map("previous_school")
+  notes          String?
+  status         StudentStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  school            School                @relation(fields: [schoolId], references: [id])
+  class             Class?                @relation(fields: [classId], references: [id], onDelete: SetNull)
+  nationality       Nationality?          @relation(fields: [nationalityId], references: [id])
+  movements         StudentMovement[]
+  attendance        Attendance[]
+  assessmentResults AssessmentResult[]
+
+  @@unique([schoolId, studentCode])
+  @@unique([schoolId, iinHash])
+  @@index([schoolId, classId])
+  @@index([schoolId, status])
+  @@index([fullName])
+  @@map("students")
+}
+
+model StudentMovement {
+  id          Int          @id @default(autoincrement())
+  schoolId    Int          @map("school_id")
+  studentId   Int          @map("student_id")
+  type        MovementType
+  date        DateTime     @db.Date
+  fromClassId Int?         @map("from_class_id")
+  toClassId   Int?         @map("to_class_id")
+  fromSchool  String?      @map("from_school")
+  toSchool    String?      @map("to_school")
+  reason      String
+  orderNumber String       @map("order_number")
+  orderDate   DateTime?    @map("order_date") @db.Date
+  comment     String?
+  createdById Int?         @map("created_by_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  school    School  @relation(fields: [schoolId], references: [id])
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromClass Class?  @relation("MovementFrom", fields: [fromClassId], references: [id], onDelete: SetNull)
+  toClass   Class?  @relation("MovementTo", fields: [toClassId], references: [id], onDelete: SetNull)
+  createdBy User?   @relation("MovementAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, date])
+  @@index([studentId, date])
+  @@map("student_movements")
+}
+
+// ───────────────────────── Attendance ─────────────────────────
+
+model AttendanceReason {
+  id        Int     @id @default(autoincrement())
+  schoolId  Int?    @map("school_id")
+  code      String
+  name      String
+  isExcused Boolean @default(true) @map("is_excused")
+
+  school     School?      @relation(fields: [schoolId], references: [id])
+  attendance Attendance[]
+
+  @@unique([schoolId, code])
+  @@map("attendance_reasons")
+}
+
+/// Нақты өткізілген сабақ (күн + сабақ нөмірі). Қатысу осы сабаққа байланады.
+model Lesson {
+  id         Int       @id @default(autoincrement())
+  schoolId   Int       @map("school_id")
+  classId    Int       @map("class_id")
+  subjectId  Int       @map("subject_id")
+  teacherId  Int?      @map("teacher_id")
+  date       DateTime  @db.Date
+  period     Int
+  startTime  String?   @map("start_time")
+  markedAt   DateTime? @map("marked_at")
+  markedById Int?      @map("marked_by_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  school     School       @relation(fields: [schoolId], references: [id])
+  class      Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject    Subject      @relation(fields: [subjectId], references: [id])
+  teacher    Teacher?     @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  attendance Attendance[]
+
+  @@unique([classId, date, period])
+  @@index([schoolId, date])
+  @@index([teacherId, date])
+  @@map("lessons")
+}
+
+model Attendance {
+  id          Int              @id @default(autoincrement())
+  schoolId    Int              @map("school_id")
+  lessonId    Int              @map("lesson_id")
+  studentId   Int              @map("student_id")
+  date        DateTime         @db.Date
+  status      AttendanceStatus
+  reasonId    Int?             @map("reason_id")
+  note        String?
+  updatedById Int?             @map("updated_by_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  lesson  Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  reason  AttendanceReason? @relation(fields: [reasonId], references: [id], onDelete: SetNull)
+
+  @@unique([lessonId, studentId])
+  @@index([lessonId, date])
+  @@index([studentId, date])
+  @@index([schoolId, date])
+  @@map("attendance")
+}
+
+// ───────────────────────── Assessments (БЖБ / ТЖБ) ─────────────────────────
+
+model Assessment {
+  id        Int            @id @default(autoincrement())
+  schoolId  Int            @map("school_id")
+  type      AssessmentType
+  classId   Int            @map("class_id")
+  subjectId Int            @map("subject_id")
+  quarterId Int            @map("quarter_id")
+  teacherId Int?           @map("teacher_id")
+  section   String?
+  title     String
+  maxScore  Decimal        @map("max_score") @db.Decimal(6, 2)
+  date      DateTime?      @db.Date
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  school    School                @relation(fields: [schoolId], references: [id])
+  class     Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject   Subject               @relation(fields: [subjectId], references: [id])
+  quarter   Quarter               @relation(fields: [quarterId], references: [id])
+  teacher   Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  criteria  AssessmentCriterion[]
+  results   AssessmentResult[]
+
+  @@index([schoolId, type, quarterId])
+  @@index([classId, subjectId, quarterId])
+  @@map("assessments")
+}
+
+model AssessmentCriterion {
+  id           Int     @id @default(autoincrement())
+  assessmentId Int     @map("assessment_id")
+  code         String
+  topic        String
+  maxScore     Decimal @map("max_score") @db.Decimal(6, 2)
+  order        Int     @default(0)
+
+  assessment Assessment                  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  results    AssessmentCriterionResult[]
+
+  @@unique([assessmentId, code])
+  @@map("assessment_criteria")
+}
+
+model AssessmentResult {
+  id           Int      @id @default(autoincrement())
+  assessmentId Int      @map("assessment_id")
+  studentId    Int      @map("student_id")
+  score        Decimal  @db.Decimal(6, 2)
+  percent      Decimal  @db.Decimal(5, 2)
+  absent       Boolean  @default(false)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  assessment       Assessment                  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student          Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  criterionResults AssessmentCriterionResult[]
+
+  @@unique([assessmentId, studentId])
+  @@index([assessmentId])
+  @@index([studentId])
+  @@map("assessment_results")
+}
+
+model AssessmentCriterionResult {
+  id          Int     @id @default(autoincrement())
+  resultId    Int     @map("result_id")
+  criterionId Int     @map("criterion_id")
+  score       Decimal @db.Decimal(6, 2)
+
+  result    AssessmentResult    @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  criterion AssessmentCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId, criterionId])
+  @@map("assessment_criterion_results")
+}
+
+// ───────────────────────── Settings ─────────────────────────
+
+/// Деңгей диапазондары — hardcode емес, мектеп әкімшілігі баптайды.
+model LevelRange {
+  id       Int    @id @default(autoincrement())
+  schoolId Int    @map("school_id")
+  name     String
+  fromPct  Int    @map("from_pct")
+  toPct    Int    @map("to_pct")
+  order    Int
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, order])
+  @@map("level_ranges")
+}
+
+model SchoolSettings {
+  schoolId            Int     @id @map("school_id")
+  attendanceThreshold Int     @default(80) @map("attendance_threshold")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("school_settings")
+}
+
+// ───────────────────────── Reports, notifications, audit ─────────────────────────
+
+model QuarterReport {
+  id          Int          @id @default(autoincrement())
+  schoolId    Int          @map("school_id")
+  quarterId   Int          @map("quarter_id")
+  classId     Int          @map("class_id")
+  subjectId   Int          @map("subject_id")
+  teacherId   Int?         @map("teacher_id")
+  status      ReportStatus @default(DRAFT)
+  /// Есеп құрылған сәттегі деректер (тарих үшін).
+  snapshot    Json?
+  /// Мәтіндік қорытынды (қолмен немесе кейін AI арқылы).
+  summary     String?
+  submittedAt DateTime?    @map("submitted_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  quarter Quarter  @relation(fields: [quarterId], references: [id])
+  class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject  @relation(fields: [subjectId], references: [id])
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@unique([quarterId, classId, subjectId])
+  @@index([schoolId, quarterId])
+  @@map("quarter_reports")
+}
+
+model Notification {
+  id        Int                  @id @default(autoincrement())
+  schoolId  Int                  @map("school_id")
+  userId    Int                  @map("user_id")
+  type      String
+  severity  NotificationSeverity @default(WARNING)
+  title     String
+  body      String?
+  /// Фронтенд ашатын бет пен сүзгі: { screen, params }
+  link      Json?
+  dedupeKey String               @map("dedupe_key")
+  readAt    DateTime?            @map("read_at")
+  createdAt DateTime             @default(now()) @map("created_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  schoolId  Int?     @map("school_id")
+  actorId   Int?     @map("actor_id")
+  actorName String   @map("actor_name")
+  actorRole String   @map("actor_role")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  summary   String
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?  @map("user_agent")
+  at        DateTime @default(now())
+
+  school School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  actor  User?   @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, at(sort: Desc)])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model Backup {
+  id          Int          @id @default(autoincrement())
+  fileName    String       @unique @map("file_name")
+  sizeBytes   BigInt       @default(0) @map("size_bytes")
+  kind        BackupKind
+  status      BackupStatus @default(RUNNING)
+  error       String?
+  createdById Int?         @map("created_by_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  finishedAt  DateTime?    @map("finished_at")
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("backups")
+}
+
+/// Платформа деңгейіндегі баптаулар (мысалы, автоматты backup).
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
