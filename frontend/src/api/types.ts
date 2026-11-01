@@ -11,6 +11,8 @@ export interface Me {
   roleLabel: string;
   permissions: string[];
   locale: string;
+  /** iMARLEN ID арқылы байланысқан аккаунт */
+  idp?: boolean;
   teacherId: number | null;
   homeroomClasses: { id: number; name: string }[];
   school: { id: number; name: string; shortName: string } | null;

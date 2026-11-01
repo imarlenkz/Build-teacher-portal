@@ -65,11 +65,19 @@ export class AuthService {
       throw new UnauthorizedException('Логин немесе құпиясөз қате');
     }
     if (user.status !== 'ACTIVE') throw new UnauthorizedException('Аккаунт бұғатталған. Әкімшіге хабарласыңыз');
+    if (this.config.get('IID_PASSWORD_LOGIN', 'true') === 'false' && user.role.code !== 'ADMIN') {
+      throw new UnauthorizedException('Құпиясөзбен кіру өшірілген. «iMARLEN ID арқылы кіру» батырмасын қолданыңыз');
+    }
 
     if (argon2.needsRehash(user.passwordHash, ARGON_OPTS)) {
       await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(password, ARGON_OPTS) } });
     }
     await this.prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() } });
+    return this.issue(user.id, user.passwordChangedAt, randomUUID(), meta);
+  }
+
+  /** Сыртқы провайдер (iMARLEN ID) арқылы расталған пайдаланушыға жаңа сессия ашу. */
+  issueFor(user: { id: number; passwordChangedAt: Date }, meta: RequestMeta): Promise<IssuedTokens> {
     return this.issue(user.id, user.passwordChangedAt, randomUUID(), meta);
   }
 
@@ -137,6 +145,7 @@ export class AuthService {
       roleLabel: ROLE_LABELS_KK[user.role],
       permissions: user.permissions,
       locale: u.locale,
+      idp: !!u.idpSub,
       teacherId: user.teacherId,
       homeroomClasses: u.teacher?.homeroomOf ?? [],
       school: school ? { id: school.id, name: school.name, shortName: school.shortName } : null,

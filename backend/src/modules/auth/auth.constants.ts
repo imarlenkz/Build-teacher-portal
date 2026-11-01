@@ -6,3 +6,4 @@ export const ACCESS_TTL_SEC = 15 * 60;
 export const REFRESH_TTL_SEC = 14 * 24 * 60 * 60;
 export const MAX_FAILED_LOGINS = 5;
 export const LOCK_MINUTES = 15;
+export const IDP_COOKIE = 'ustaz_idp';
