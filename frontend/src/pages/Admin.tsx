@@ -484,21 +484,50 @@ function Years() {
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Тоқсан</th>
                   <th>Кезең</th>
+                  <th>Басы – соңы</th>
                   <th>Есеп мерзімі</th>
                 </tr>
               </thead>
               <tbody>
+                <tr className="tbl-group">
+                  <td colSpan={3}>Тоқсан</td>
+                </tr>
                 {y.quarters.map((qq) => (
                   <tr key={qq.id}>
-                    <td>{ROMAN[qq.number - 1]}</td>
+                    <td>{ROMAN[qq.number - 1]} тоқсан</td>
                     <td className="mono">
                       {dot(qq.startDate)} – {dot(qq.endDate)}
                     </td>
                     <td className="mono">{dot(qq.reportDueDate)}</td>
                   </tr>
                 ))}
+                {y.quarters.length === 4 && (
+                  <>
+                    <tr className="tbl-group">
+                      <td colSpan={3}>Жартыжылдық</td>
+                    </tr>
+                    {[0, 2].map((i) => (
+                      <tr key={`h${i}`}>
+                        <td>{i / 2 + 1}-жартыжылдық</td>
+                        <td className="mono">
+                          {dot(y.quarters[i].startDate)} – {dot(y.quarters[i + 1].endDate)}
+                        </td>
+                        <td className="muted">—</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+                <tr className="tbl-group">
+                  <td colSpan={3}>Жыл</td>
+                </tr>
+                <tr>
+                  <td>Оқу жылы</td>
+                  <td className="mono">
+                    {dot(y.startDate)} – {dot(y.endDate)}
+                  </td>
+                  <td className="muted">—</td>
+                </tr>
               </tbody>
             </table>
           </Card>
