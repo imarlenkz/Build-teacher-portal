@@ -15,20 +15,27 @@ export interface AuditEntry {
 
 type Tx = Prisma.TransactionClient | PrismaService;
 
+/** Адам емес әрекет етуші (мыс. түнгі Nexus автосинхрондауы). */
+export interface SystemActor {
+  schoolId: number;
+  system: string;
+}
+
 @Injectable()
 export class AuditService {
   private readonly log = new Logger('Audit');
   constructor(private readonly prisma: PrismaService) {}
 
   /** Транзакция ішінде шақырылса, аудит жазбасы негізгі өзгеріспен бірге сақталады. */
-  async record(user: AuthUser | null, entry: AuditEntry, meta?: RequestMeta, tx: Tx = this.prisma) {
+  async record(user: AuthUser | SystemActor | null, entry: AuditEntry, meta?: RequestMeta, tx: Tx = this.prisma) {
+    const person = user && 'id' in user ? user : null;
     try {
       await tx.auditLog.create({
         data: {
           schoolId: user?.schoolId ?? null,
-          actorId: user?.id ?? null,
-          actorName: user?.fullName ?? 'Жүйе',
-          actorRole: user ? ROLE_LABELS_KK[user.role] : 'Жүйе',
+          actorId: person?.id ?? null,
+          actorName: person?.fullName ?? (user && 'system' in user ? user.system : 'Жүйе'),
+          actorRole: person ? ROLE_LABELS_KK[person.role] : 'Жүйе',
           action: entry.action,
           entity: entry.entity,
           entityId: entry.entityId != null ? String(entry.entityId) : null,
