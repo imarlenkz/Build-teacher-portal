@@ -10,6 +10,7 @@
 import { AttendanceStatus, Gender, MovementType, Prisma, PrismaClient, RoleCode } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { DEFAULT_ROLE_PERMISSIONS } from '../src/common/permissions';
+import { DEFAULT_LEVELS } from '../src/modules/core/levels.service';
 import { makeIin, PiiCipher } from '../src/common/utils/crypto';
 import { addDays, fmtDate, todayStr, toDate, weekday } from '../src/common/utils/dates';
 
@@ -534,10 +535,40 @@ async function demo() {
   console.log('✓ demo data ready. Logins: admin / bekova / akhmetova (password: DEMO_PASSWORD or Ustaz2026!)');
 }
 
+/**
+ * Таза орнатуда (демо жоқ) бірінші мектеп пен ағымдағы оқу жылы жасалады — әйтпесе admin кіргенде
+ * жұмыс істейтін мектеп болмайды. Атауы SCHOOL_NAME / SCHOOL_SHORT_NAME арқылы беріледі; кейін «Басқару» бетінде өзгертіледі.
+ */
+async function firstSchool() {
+  if (await prisma.school.findFirst()) return;
+  const today = todayStr();
+  const y = Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) < 8 ? 1 : 0);
+  const name = process.env.SCHOOL_NAME ?? 'Жалпы білім беретін мектеп';
+  await prisma.school.create({
+    data: {
+      name,
+      shortName: process.env.SCHOOL_SHORT_NAME ?? name.slice(0, 60),
+      settings: { create: {} },
+      levelRanges: { create: DEFAULT_LEVELS.map((l) => ({ ...l })) },
+      schoolYears: {
+        create: {
+          name: `${y}–${y + 1}`,
+          startDate: toDate(`${y}-09-01`),
+          endDate: toDate(`${y + 1}-05-25`),
+          isCurrent: true,
+          quarters: { create: quarterPlan(y).map((q) => ({ number: q.number, startDate: toDate(q.startDate), endDate: toDate(q.endDate), reportDueDate: toDate(q.reportDueDate) })) },
+        },
+      },
+    },
+  });
+  console.log(`✓ first school "${name}" and school year ${y}–${y + 1} created`);
+}
+
 async function main() {
   if (process.env.SEED_RESET === 'true') await reset();
   await base();
   if (process.env.SEED_DEMO === 'true') await demo();
+  else await firstSchool();
 }
 
 main()

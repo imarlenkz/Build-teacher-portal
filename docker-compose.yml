@@ -1,0 +1,109 @@
+# «Ұстаз» — production стегі: nginx (TLS) → frontend (статикалық) + backend (API) → postgres + redis.
+# Іске қосу: cp .env.example .env && (мәндерді толтырыңыз) && docker compose up -d --build
+
+name: ustaz
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: '10m', max-file: '5' }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ustaz}
+      POSTGRES_USER: ${POSTGRES_USER:-ustaz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      TZ: Asia/Almaty
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '256mb', '--maxmemory-policy', 'allkeys-lru', '--requirepass', '${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [internal]
+    logging: *logging
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ustaz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ustaz}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      BACKUP_DIR: /backups
+      COOKIE_SECURE: 'true'
+      TRUST_PROXY_HOPS: 1
+    volumes:
+      - backups:/backups
+    networks: [internal]
+    logging: *logging
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    networks: [internal]
+    logging: *logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [backend, frontend]
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    # Жаңартылған сертификатты алу үшін 6 сағат сайын конфигурацияны қайта жүктейді.
+    command: ['/bin/sh', '-c', 'while :; do sleep 6h; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g "daemon off;"']
+    volumes:
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - certbot-www:/var/www/certbot:ro
+    networks: [internal, public]
+    logging: *logging
+
+  # Let's Encrypt сертификатын 12 сағат сайын тексеріп жаңартады (deploy/scripts/init-letsencrypt.sh алдымен бір рет).
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    networks: [public]
+    logging: *logging
+
+volumes:
+  pgdata:
+  redisdata:
+  backups:
+  certbot-www:
+
+networks:
+  internal:
+    internal: false
+  public:
