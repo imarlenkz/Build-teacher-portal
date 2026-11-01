@@ -16,6 +16,7 @@ class QRQuery {
   @Type(() => Number) @IsInt() quarterId: number;
   @Type(() => Number) @IsInt() classId: number;
   @Type(() => Number) @IsInt() subjectId: number;
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number;
 }
 class QRExport extends QRQuery {
   @IsIn(['pdf', 'xlsx', 'csv']) format: 'pdf' | 'xlsx' | 'csv';

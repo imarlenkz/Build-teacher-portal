@@ -18,6 +18,8 @@ export interface QuarterReportQuery {
   quarterId: number;
   classId: number;
   subjectId: number;
+  /** Пән топтарға бөлінсе — бір топтың есебі (оқушылары, БЖБ/ТЖБ, мұғалімі). */
+  groupId?: number | null;
 }
 
 export type QuarterReportData = Awaited<ReturnType<ReportsService['build']>>;
@@ -44,6 +46,18 @@ export class ReportsService {
       where: { classId: q.classId, subjectId: q.subjectId },
       include: { teacher: { include: { user: { select: { fullName: true } } } } },
     });
+    const groups = await this.prisma.subjectGroup.findMany({
+      where: { classId: q.classId, subjectId: q.subjectId },
+      include: { teacher: { include: { user: { select: { fullName: true } } } }, members: { select: { studentId: true } } },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    });
+    const group = q.groupId ? groups.find((g) => g.id === q.groupId) : undefined;
+    if (q.groupId && !group) throw new NotFoundException('Топ табылмады');
+    const memberIds = group ? new Set(group.members.map((m) => m.studentId)) : null;
+    // Топқа бөлінген пәнде: топ таңдалса — сол топтың мұғалімі, әйтпесе барлық топ мұғалімдері.
+    const mainTeacher = assignment?.teacher.user.fullName ?? user.fullName;
+    const groupTeachers = groups.filter((g) => g.teacher).map((g) => `${g.teacher!.user.fullName} (${g.name})`);
+    const teacher = group ? (group.teacher?.user.fullName ?? mainTeacher) : groupTeachers.length ? groupTeachers.join(', ') : mainTeacher;
     const lv = await this.levels.get(user.schoolId);
     const canNat = user.permissions.includes(P.NATIONALITY_VIEW);
     const today = todayStr();
@@ -52,7 +66,7 @@ export class ReportsService {
     const attTo = minDate(qTo, today);
 
     const students = await this.prisma.student.findMany({
-      where: { classId: q.classId, status: 'ACTIVE', deletedAt: null },
+      where: { classId: q.classId, status: 'ACTIVE', deletedAt: null, ...(memberIds ? { id: { in: [...memberIds] } } : {}) },
       select: { id: true, fullName: true, gender: true, nationality: { select: { name: true } } },
       orderBy: { fullName: 'asc' },
     });
@@ -65,7 +79,7 @@ export class ReportsService {
       GROUP BY 1`;
 
     const assessments = await this.prisma.assessment.findMany({
-      where: { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId },
+      where: { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId, ...(group ? { OR: [{ groupId: group.id }, { groupId: null }] } : {}) },
       include: { results: true, criteria: { orderBy: { order: 'asc' } } },
       orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
     });
@@ -133,7 +147,7 @@ export class ReportsService {
     const stored = await this.prisma.quarterReport.findUnique({ where: { quarterId_classId_subjectId: { quarterId: q.quarterId, classId: q.classId, subjectId: q.subjectId } } });
 
     const summary =
-      stored?.summary ??
+      (group ? null : stored?.summary) ??
       (await this.insights.quarterSummary({
         className: cls.name,
         subject: subject.name,
@@ -160,9 +174,11 @@ export class ReportsService {
         quarter: quarter.number,
         quarterLabel: `${QUARTER_ROMAN[quarter.number - 1]} тоқсан`,
         period: { from: qFrom, to: qTo },
-        className: cls.name,
+        className: group ? `${cls.name} · ${group.name}` : cls.name,
         subject: subject.name,
-        teacher: assignment?.teacher.user.fullName ?? user.fullName,
+        teacher,
+        groupId: group?.id ?? null,
+        groups: groups.map((g) => ({ id: g.id, name: g.name, teacher: g.teacher?.user.fullName ?? null, size: g.members.length })),
         generatedAt: new Date().toISOString(),
         generatedBy: user.fullName,
         status: stored?.status ?? 'DRAFT',
@@ -204,7 +220,9 @@ export class ReportsService {
     };
   }
 
-  async submit(user: AuthUser, q: QuarterReportQuery, summary: string | undefined, meta: RequestMeta) {
+  async submit(user: AuthUser, query: QuarterReportQuery, summary: string | undefined, meta: RequestMeta) {
+    // Есеп пән бойынша тапсырылады (топқа бөлінсе де — бүкіл сынып).
+    const q = { quarterId: query.quarterId, classId: query.classId, subjectId: query.subjectId };
     const data = await this.build(user, q);
     if (!data.completeness.hasTjb && !data.completeness.hasBjb) throw new BadRequestException('Есепті тапсыру үшін БЖБ немесе ТЖБ нәтижелері болуы керек');
     const snapshot = JSON.parse(JSON.stringify({ ...data, summary: summary ?? data.summary })) as Prisma.InputJsonValue;
