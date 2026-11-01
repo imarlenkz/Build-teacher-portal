@@ -44,8 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-    qc.clear();
-    qc.setQueryData(['me'], null);
+    // qc.clear() белсенді ['me'] бақылаушысын жаңартпайды — экран өзгермей қалатын.
+    // Бетті толық қайта жүктеу кэшті де, күйді де тазалап, кіру бетін ашады.
+    window.location.replace('/');
   }, [qc]);
   const value = useMemo<AuthCtx>(
     () => ({
