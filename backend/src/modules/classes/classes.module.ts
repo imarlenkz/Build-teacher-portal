@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Injectable, Module, NotFoundException, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { CurrentUser, ReqMeta, RequirePermissions } from '../../common/decorators';
@@ -25,6 +25,22 @@ class ClassInput {
 
 class HomeroomInput {
   @IsOptional() @Type(() => Number) @IsInt() teacherId: number | null;
+}
+
+class GroupInput {
+  @IsOptional() @Type(() => Number) @IsInt() id?: number;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value)) @IsString() @MinLength(1) @MaxLength(40) name: string;
+  @IsOptional() @Type(() => Number) @IsInt() teacherId?: number | null;
+  @IsArray() @ArrayMaxSize(60) @Type(() => Number) @IsInt({ each: true }) studentIds: number[];
+}
+
+class GroupsInput {
+  @Type(() => Number) @IsInt() subjectId: number;
+  @IsArray() @ArrayMaxSize(6) @ValidateNested({ each: true }) @Type(() => GroupInput) groups: GroupInput[];
+}
+
+class SubjectQuery {
+  @Type(() => Number) @IsInt() subjectId: number;
 }
 
 class AssignmentInput {
@@ -66,6 +82,11 @@ export class ClassesService {
       where: { schoolYearId: year.id, schoolId: user.schoolId },
       include: { subject: true, teacher: { include: { user: { select: { fullName: true } } } } },
     });
+    const groups = await this.prisma.subjectGroup.findMany({
+      where: { schoolId: user.schoolId, class: { schoolYearId: year.id } },
+      include: { teacher: { include: { user: { select: { fullName: true } } } }, _count: { select: { members: true } } },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    });
     return rows
       .filter((r) => !ids || ids.includes(r.id))
       .map((r) => ({
@@ -81,7 +102,14 @@ export class ClassesService {
         attendancePct: r.att != null ? round1(r.att) : null,
         subjects: assignments
           .filter((a) => a.classId === r.id)
-          .map((a) => ({ id: a.id, subjectId: a.subjectId, subject: a.subject.name, teacherId: a.teacherId, teacher: a.teacher.user.fullName })),
+          .map((a) => ({
+            id: a.id,
+            subjectId: a.subjectId,
+            subject: a.subject.name,
+            teacherId: a.teacherId,
+            teacher: a.teacher.user.fullName,
+            groups: groups.filter((g) => g.classId === r.id && g.subjectId === a.subjectId).map((g) => ({ id: g.id, name: g.name, teacherId: g.teacherId, teacher: g.teacher?.user.fullName ?? null, size: g._count.members })),
+          })),
       }));
   }
 
@@ -147,10 +175,110 @@ export class ClassesService {
   }
 }
 
+@Injectable()
+export class GroupsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private async loadClass(user: AuthUser, classId: number, subjectId: number) {
+    const c = await this.prisma.class.findFirst({ where: { id: classId, schoolId: user.schoolId } });
+    if (!c) throw new NotFoundException('Сынып табылмады');
+    const s = await this.prisma.subject.findFirst({ where: { id: subjectId, schoolId: user.schoolId } });
+    if (!s) throw new BadRequestException('Пән табылмады');
+    return { c, s };
+  }
+
+  async get(user: AuthUser, classId: number, subjectId: number) {
+    await this.loadClass(user, classId, subjectId);
+    const [groups, students] = await Promise.all([
+      this.prisma.subjectGroup.findMany({
+        where: { classId, subjectId },
+        include: { members: { select: { studentId: true } }, _count: { select: { gradeColumns: true, assessments: true } } },
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      }),
+      this.prisma.student.findMany({ where: { classId, status: 'ACTIVE', deletedAt: null }, select: { id: true, fullName: true, gender: true }, orderBy: { fullName: 'asc' } }),
+    ]);
+    return {
+      groups: groups.map((g) => ({ id: g.id, name: g.name, teacherId: g.teacherId, studentIds: g.members.map((m) => m.studentId), hasData: g._count.gradeColumns + g._count.assessments > 0 })),
+      students,
+    };
+  }
+
+  /** Топтарды толық ауыстыру. Бос тізім — бөлуді алып тастау. Деректері бар топты жоюға болмайды. */
+  async save(user: AuthUser, classId: number, dto: GroupsInput, meta: RequestMeta) {
+    const { c, s } = await this.loadClass(user, classId, dto.subjectId);
+    if (dto.groups.length === 1) throw new BadRequestException('Кемінде екі топ болуы керек (немесе бөлуді алып тастаңыз)');
+    const names = dto.groups.map((g) => g.name.toLowerCase());
+    if (new Set(names).size !== names.length) throw new BadRequestException('Топ атаулары қайталанбауы керек');
+    const all = dto.groups.flatMap((g) => g.studentIds);
+    if (new Set(all).size !== all.length) throw new BadRequestException('Оқушы тек бір топта болуы керек');
+    const valid = new Set((await this.prisma.student.findMany({ where: { id: { in: all }, classId, deletedAt: null }, select: { id: true } })).map((x) => x.id));
+    if (all.some((id) => !valid.has(id))) throw new BadRequestException('Тізімде басқа сыныптың оқушысы бар');
+    const teacherIds = dto.groups.map((g) => g.teacherId).filter((x): x is number => !!x);
+    if (teacherIds.length) {
+      const n = await this.prisma.teacher.count({ where: { id: { in: teacherIds }, schoolId: user.schoolId } });
+      if (n !== new Set(teacherIds).size) throw new BadRequestException('Мұғалім табылмады');
+    }
+    const existing = await this.prisma.subjectGroup.findMany({ where: { classId, subjectId: dto.subjectId }, include: { _count: { select: { gradeColumns: true, assessments: true } } } });
+    const keep = new Set(dto.groups.map((g) => g.id).filter(Boolean));
+    if (dto.groups.some((g) => g.id && !existing.some((e) => e.id === g.id))) throw new BadRequestException('Топ табылмады');
+    const removed = existing.filter((e) => !keep.has(e.id));
+    const blocked = removed.filter((e) => e._count.gradeColumns + e._count.assessments > 0);
+    if (blocked.length) throw new BadRequestException(`«${blocked.map((b) => b.name).join('», «')}» тобында журнал бағалары немесе БЖБ/ТЖБ бар: оны жоюға болмайды`);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (removed.length) await tx.subjectGroup.deleteMany({ where: { id: { in: removed.map((r) => r.id) } } });
+      await tx.subjectGroupMember.deleteMany({ where: { classId, subjectId: dto.subjectId } });
+      // Атаулар уникалды болғандықтан, алдымен уақытша атау беріп, кейін ауыстырамыз.
+      for (const e of existing.filter((x) => keep.has(x.id))) await tx.subjectGroup.update({ where: { id: e.id }, data: { name: `__tmp_${e.id}` } });
+      for (const [i, g] of dto.groups.entries()) {
+        const data = { name: g.name, teacherId: g.teacherId ?? null, order: i };
+        const row = g.id
+          ? await tx.subjectGroup.update({ where: { id: g.id }, data })
+          : await tx.subjectGroup.create({ data: { ...data, schoolId: user.schoolId, classId, subjectId: dto.subjectId } });
+        if (g.studentIds.length) await tx.subjectGroupMember.createMany({ data: g.studentIds.map((studentId) => ({ groupId: row.id, studentId, classId, subjectId: dto.subjectId })) });
+      }
+      await this.audit.record(
+        user,
+        {
+          action: dto.groups.length ? 'Сыныпты топқа бөлді' : 'Топқа бөлуді алып тастады',
+          entity: 'class',
+          entityId: classId,
+          summary: `${c.name} · ${s.name}`,
+          before: existing.length ? existing.map((e) => e.name).join(', ') : '—',
+          after: dto.groups.length ? dto.groups.map((g) => `${g.name}: ${g.studentIds.length}`).join(', ') : '—',
+        },
+        meta,
+        tx,
+      );
+    });
+    await this.cache.bump(user.schoolId);
+    return this.get(user, classId, dto.subjectId);
+  }
+}
+
 @ApiTags('classes')
 @Controller('classes')
 class ClassesController {
-  constructor(private readonly classes: ClassesService) {}
+  constructor(
+    private readonly classes: ClassesService,
+    private readonly groups: GroupsService,
+  ) {}
+
+  @Get(':id/groups')
+  @RequirePermissions(P.CLASSES_MANAGE)
+  getGroups(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() q: SubjectQuery) {
+    return this.groups.get(user, id, q.subjectId);
+  }
+
+  @Put(':id/groups')
+  @RequirePermissions(P.CLASSES_MANAGE)
+  saveGroups(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: GroupsInput, @ReqMeta() meta: RequestMeta) {
+    return this.groups.save(user, id, dto, meta);
+  }
 
   @Get()
   @RequirePermissions(P.STUDENTS_READ)
@@ -183,5 +311,5 @@ class ClassesController {
   }
 }
 
-@Module({ providers: [ClassesService], controllers: [ClassesController], exports: [ClassesService] })
+@Module({ providers: [ClassesService, GroupsService], controllers: [ClassesController], exports: [ClassesService] })
 export class ClassesModule {}

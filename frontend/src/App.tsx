@@ -16,6 +16,7 @@ const Classes = lazy(() => import('./pages/Classes'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const Movements = lazy(() => import('./pages/Movements'));
 const Assessments = lazy(() => import('./pages/Assessments'));
+const Journal = lazy(() => import('./pages/Journal'));
 const TjbAnalysis = lazy(() => import('./pages/TjbAnalysis'));
 const QuarterReport = lazy(() => import('./pages/QuarterReport'));
 const Analytics = lazy(() => import('./pages/Analytics'));
@@ -59,6 +60,7 @@ function Root() {
                   <Route path="classes" element={<Classes />} />
                   <Route path="attendance" element={<Attendance />} />
                   <Route path="movements" element={<Movements />} />
+                  <Route path="journal" element={<Journal />} />
                   <Route path="bjb" element={<Assessments type="BJB" />} />
                   <Route path="tjb" element={<Assessments type="TJB" />} />
                   <Route path="tjb-analysis" element={<TjbAnalysis />} />

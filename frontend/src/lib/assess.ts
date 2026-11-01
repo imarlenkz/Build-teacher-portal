@@ -11,6 +11,8 @@ export interface AssessmentListItem {
   subject: string;
   quarterId: number;
   quarter: number;
+  groupId: number | null;
+  groupName: string | null;
   maxScore: number;
   date: string | null;
   results: number;

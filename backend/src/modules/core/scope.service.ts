@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthUser } from '../../common/auth-user';
 import { P } from '../../common/permissions';
@@ -33,14 +33,15 @@ export class ScopeService {
     if (this.isSchoolWide(user)) return null;
     if (!user.teacherId) return [];
     const yearId = schoolYearId ?? (await this.currentYear(user.schoolId)).id;
-    const [assign, home] = await Promise.all([
+    const [assign, home, groups] = await Promise.all([
       this.prisma.teachingAssignment.findMany({
         where: { teacherId: user.teacherId, schoolYearId: yearId },
         select: { classId: true },
       }),
       this.prisma.class.findMany({ where: { homeroomTeacherId: user.teacherId, schoolYearId: yearId }, select: { id: true } }),
+      this.prisma.subjectGroup.findMany({ where: { teacherId: user.teacherId, class: { schoolYearId: yearId } }, select: { classId: true } }),
     ]);
-    return [...new Set([...assign.map((a) => a.classId), ...home.map((c) => c.id)])];
+    return [...new Set([...assign.map((a) => a.classId), ...home.map((c) => c.id), ...groups.map((g) => g.classId)])];
   }
 
   async assertClass(user: AuthUser, classId: number) {
@@ -67,12 +68,50 @@ export class ScopeService {
     return s;
   }
 
-  /** Мұғалім осы сыныпта осы пәнді жүргізе ме (немесе мектеп деңгейіндегі рұқсат). */
+  /** Мектеп деңгейіндегі рұқсат, сынып жетекшісі немесе пәннің негізгі мұғалімі — барлық топқа қол жеткізеді. */
+  private async teachesWhole(user: AuthUser, classId: number, subjectId: number) {
+    if (this.isSchoolWide(user)) return true;
+    const a = await this.prisma.teachingAssignment.findFirst({ where: { classId, subjectId, teacherId: user.teacherId ?? -1 } });
+    if (a) return true;
+    return !!(await this.prisma.class.findFirst({ where: { id: classId, homeroomTeacherId: user.teacherId ?? -1 } }));
+  }
+
+  /** Мұғалім осы сыныпта осы пәнді (немесе оның бір тобын) жүргізе ме. */
   async assertTeaches(user: AuthUser, classId: number, subjectId: number) {
     await this.assertClass(user, classId);
-    if (this.isSchoolWide(user)) return;
-    const a = await this.prisma.teachingAssignment.findFirst({ where: { classId, subjectId, teacherId: user.teacherId ?? -1 } });
-    const home = await this.prisma.class.findFirst({ where: { id: classId, homeroomTeacherId: user.teacherId ?? -1 } });
-    if (!a && !home) throw new ForbiddenException('Бұл пәнге рұқсат жоқ');
+    if (await this.teachesWhole(user, classId, subjectId)) return;
+    const g = await this.prisma.subjectGroup.findFirst({ where: { classId, subjectId, teacherId: user.teacherId ?? -1 } });
+    if (!g) throw new ForbiddenException('Бұл пәнге рұқсат жоқ');
+  }
+
+  /** Бар жазбаны (баған, бағалау) өзгерту құқығы: топтыққа — сол топтың мұғалімі, ортаққа — пәннің негізгі мұғалімі. */
+  async assertWriteScope(user: AuthUser, classId: number, subjectId: number, groupId: number | null) {
+    await this.assertTeaches(user, classId, subjectId);
+    if (groupId) {
+      await this.resolveGroup(user, classId, subjectId, groupId, true);
+      return;
+    }
+    if (await this.teachesWhole(user, classId, subjectId)) return;
+    throw new ForbiddenException('Бұл жазба бүкіл сыныпқа ортақ: оны пәннің негізгі мұғалімі өзгертеді');
+  }
+
+  /**
+   * Пән топтарға бөлінген болса, groupId міндетті және осы сынып-пәнге тиесілі болуы керек.
+   * write=true кезінде топ мұғалімі тек өз тобын өзгерте алады.
+   * Қайтарады: топ (немесе топтар жоқ болса null).
+   */
+  async resolveGroup(user: AuthUser, classId: number, subjectId: number, groupId: number | null | undefined, write = false) {
+    const groups = await this.prisma.subjectGroup.findMany({ where: { classId, subjectId }, select: { id: true, name: true, teacherId: true } });
+    if (!groups.length) {
+      if (groupId) throw new BadRequestException('Бұл пән топтарға бөлінбеген');
+      return null;
+    }
+    if (!groupId) throw new BadRequestException('Пән топтарға бөлінген: топты таңдаңыз');
+    const g = groups.find((x) => x.id === groupId);
+    if (!g) throw new BadRequestException('Топ осы сынып пәніне тиесілі емес');
+    if (write && g.teacherId !== user.teacherId && !(await this.teachesWhole(user, classId, subjectId))) {
+      throw new ForbiddenException('Бұл топқа рұқсат жоқ');
+    }
+    return g;
   }
 }

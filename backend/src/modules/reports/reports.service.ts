@@ -69,7 +69,9 @@ export class ReportsService {
       orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
     });
     const bjb = assessments.filter((a) => a.type === 'BJB');
-    const tjb = assessments.find((a) => a.type === 'TJB');
+    // Пән топтарға бөлінсе, әр топтың өз ТЖБ-сы болады: есепте барлығының нәтижелері біріктіріледі.
+    const tjbs = assessments.filter((a) => a.type === 'TJB');
+    const tjb = tjbs.length ? { ...tjbs[0], title: tjbs.map((a) => a.title).join(' / '), results: tjbs.flatMap((a) => a.results) } : undefined;
     const bjbStats = bjb.map((a) => {
       const rows = a.results.filter((r) => !r.absent).map((r) => ({ score: Number(r.score), pct: Number(r.percent) }));
       return { id: a.id, title: a.title, section: a.section, ...scoreStats(rows, lv), maxScore: Number(a.maxScore) };

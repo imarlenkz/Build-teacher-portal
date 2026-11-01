@@ -43,6 +43,8 @@ export interface Reference {
   classes: { id: number; name: string; grade: number; isHomeroom: boolean }[];
   subjects: { id: number; name: string }[];
   classSubjects: { classId: number; subjectId: number }[];
+  /** Пән топтары (пайдаланушы көре алатындары). */
+  groups: { id: number; classId: number; subjectId: number; name: string }[];
   nationalities: { id: number; name: string }[] | null;
   reasons: { id: number; code: string; name: string; isExcused: boolean }[];
   levels: Level[];

@@ -10,6 +10,8 @@ export class AssessmentListQuery {
   @IsOptional() @Type(() => Number) @IsInt() classId?: number;
   @IsOptional() @Type(() => Number) @IsInt() subjectId?: number;
   @IsOptional() @Type(() => Number) @IsInt() quarterId?: number;
+  /** Топ таңдалса: осы топтың және бүкіл сыныптың бағалаулары. */
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number;
 }
 
 export class CriterionInput {
@@ -24,6 +26,7 @@ export class AssessmentInput {
   @Type(() => Number) @IsInt() classId: number;
   @Type(() => Number) @IsInt() subjectId: number;
   @Type(() => Number) @IsInt() quarterId: number;
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number | null;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(160) section?: string | null;
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(160) title: string;
   @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) @Min(1) @Max(200) maxScore: number;

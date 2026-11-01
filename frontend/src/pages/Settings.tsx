@@ -21,6 +21,7 @@ export default function Settings() {
         <div className="stack">
           <Personal />
           {can(PERM.SETTINGS) && <SchoolCard />}
+          {can(PERM.SETTINGS) && <GradingCard />}
         </div>
       </div>
       {can(PERM.BACKUP) && <Backups />}
@@ -201,6 +202,49 @@ function SchoolCard() {
           </button>
         </div>
       </Field>
+    </Card>
+  );
+}
+
+type SchoolSettings = { attendanceThreshold: number; foWeight: number; bjbWeight: number; tjbWeight: number };
+
+/** Тоқсандық баға формуласының салмақтары (журнал бетінде қолданылады). */
+function GradingCard() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery({ queryKey: ['settings'], queryFn: () => api.get<{ levels: Level[]; settings: SchoolSettings }>('/settings') });
+  const [w, setW] = useState({ fo: '', bjb: '', tjb: '' });
+  useEffect(() => {
+    if (q.data) setW({ fo: String(q.data.settings.foWeight), bjb: String(q.data.settings.bjbWeight), tjb: String(q.data.settings.tjbWeight) });
+  }, [q.data]);
+  const n = { fo: Number(w.fo), bjb: Number(w.bjb), tjb: Number(w.tjb) };
+  const sum = n.fo + n.bjb + n.tjb;
+  const s = q.data?.settings;
+  const same = s && n.fo === s.foWeight && n.bjb === s.bjbWeight && n.tjb === s.tjbWeight;
+  const save = useMutation({
+    mutationFn: () => api.put('/settings/grading', { foWeight: n.fo, bjbWeight: n.bjb, tjbWeight: n.tjb }),
+    onSuccess: () => {
+      toast('Тоқсандық баға формуласы сақталды');
+      ['settings', 'journal'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    },
+    onError: (e) => toast((e as Error).message, 'error'),
+  });
+  const input = (k: keyof typeof w, label: string) => (
+    <Field label={`${label} (%)`}>
+      <input className="input mono" style={{ width: 80 }} inputMode="numeric" value={w[k]} onChange={(e) => setW({ ...w, [k]: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
+    </Field>
+  );
+  return (
+    <Card title="Тоқсандық баға формуласы" sub="Журналдағы тоқсан пайызы осы салмақтармен есептеледі (әдепкі: ФО 25 · БЖБ 25 · ТЖБ 50)">
+      <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        {input('fo', 'ФО')}
+        {input('bjb', 'БЖБ')}
+        {input('tjb', 'ТЖБ')}
+        <button className="btn primary" disabled={sum !== 100 || save.isPending || same} onClick={() => save.mutate()} style={{ marginBottom: 2 }}>
+          Сақтау
+        </button>
+      </div>
+      {sum !== 100 && <div className="c-bad" style={{ fontSize: 12.5, marginTop: 6 }}>Қосындысы 100% болуы керек (қазір {sum}%)</div>}
     </Card>
   );
 }
