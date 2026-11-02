@@ -118,7 +118,7 @@ export function AppLayout() {
       <aside className={`sidebar ${drawer ? 'open' : ''}`} aria-label="Негізгі мәзір">
         <div className="brand">
           <div className="logo" aria-hidden>
-            Ұ
+            U
           </div>
           <div>
             <div className="brand-name">{t('app.name')}</div>

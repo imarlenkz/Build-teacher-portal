@@ -31,7 +31,7 @@ export class ExportService {
 
   async xlsx(sheets: SheetSpec[]): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'Ұстаз';
+    wb.creator = 'USTAZ';
     wb.created = new Date();
     for (const s of sheets) {
       const ws = wb.addWorksheet(s.name.slice(0, 31), { views: [{ state: 'frozen', ySplit: s.title ? (s.subtitle ? 4 : 3) : 1 }] });

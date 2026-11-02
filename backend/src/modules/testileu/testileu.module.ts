@@ -118,7 +118,7 @@ export class TestileuService {
   }
 
   checkKey(given: string | undefined) {
-    if (!this.key) throw new ServiceUnavailableException('Ұстазда TESTILEU_INTEGRATION_KEY орнатылмаған');
+    if (!this.key) throw new ServiceUnavailableException('USTAZ-да TESTILEU_INTEGRATION_KEY орнатылмаған');
     const a = createHash('sha256').update(String(given ?? '')).digest();
     const b = createHash('sha256').update(this.key).digest();
     if (!given || !timingSafeEqual(a, b)) throw new UnauthorizedException('Интеграция кілті қате');
@@ -129,7 +129,7 @@ export class TestileuService {
       where: { idpCode: { equals: dto.school_code, mode: 'insensitive' } },
       select: { id: true },
     });
-    if (!school) throw new NotFoundException(`Ұстазда «${dto.school_code}» кодты мектеп жоқ (Әкімші > Мектептер > iMARLEN ID коды)`);
+    if (!school) throw new NotFoundException(`USTAZ-да «${dto.school_code}» кодты мектеп жоқ (Әкімші > Мектептер > iMARLEN ID коды)`);
     const saved = await this.store(school.id, dto.results);
     const out = await this.process(school.id, saved);
     await this.audit.record(
@@ -262,7 +262,7 @@ export class TestileuService {
     if (!studentId || !cls) return fail(`Оқушы табылмады: ${p.student_name}${p.group_name ? ` (${p.group_name})` : ''}`);
 
     const subjectId = ctx.subjectOf(p.subject_name);
-    if (!subjectId) return fail(p.subject_name ? `Ұстазда «${p.subject_name}» пәні жоқ` : 'Тестте пән көрсетілмеген', { studentId, className: cls.name });
+    if (!subjectId) return fail(p.subject_name ? `USTAZ-да «${p.subject_name}» пәні жоқ` : 'Тестте пән көрсетілмеген', { studentId, className: cls.name });
 
     const k = kindForGrade(detectKind(p.kind, p.test_title), cls.grade);
     if ('skip' in k) return { status: 'SKIPPED', reason: k.skip, studentId, kind: null, target: null, className: cls.name };

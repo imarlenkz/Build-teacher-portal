@@ -1,4 +1,4 @@
-# «Ұстаз» — мұғалімге арналған білім беру порталы
+# «USTAZ» — мұғалімге арналған білім беру порталы
 
 Қазақстан мектептеріне арналған веб-портал: қатысу, оқушы қозғалысы, БЖБ/ТЖБ енгізу және талдау, тоқсандық есеп (PDF/Excel/CSV), аналитика, ескертулер, аудит, рөлдер бойынша қолжетімділік және бірнеше мектепті қолдау. Интерфейс қазақ тілінде, орыс және ағылшын тілдерін қосуға дайын (i18next).
 
@@ -173,10 +173,10 @@ Firewall: тек 22, 80, 443 порттары ашық болуы керек. Po
 
 1. **Клиентті тіркеу** (id.imarlen.kz серверінде):
    ```bash
-   docker compose exec id node --disable-warning=ExperimentalWarning src/cli.mjs client ustaz "Ұстаз" \
+   docker compose exec id node --disable-warning=ExperimentalWarning src/cli.mjs client ustaz "USTAZ" \
      https://<домен>/api/auth/callback https://<домен>/ https://<домен>/
    ```
-   Шыққан `client_secret`-ті Ұстаз серверіндегі `.env` файлына `IID_CLIENT_SECRET` ретінде жазыңыз (чатқа, git-ке салмаңыз). `IID_CLIENT_ID=ustaz`.
+   Шыққан `client_secret`-ті USTAZ серверіндегі `.env` файлына `IID_CLIENT_SECRET` ретінде жазыңыз (чатқа, git-ке салмаңыз). `IID_CLIENT_ID=ustaz`.
 2. `docker compose up -d backend` — кіру бетінде батырма пайда болады.
 3. **Мектептерді байланыстыру:** «Басқару → Мектептер → Өңдеу» бетінде iMARLEN ID-дағы мектеп кодын (мыс. `s51`) көрсетіңіз.
 
