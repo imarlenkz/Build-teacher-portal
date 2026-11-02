@@ -43,24 +43,67 @@ export function AppLayout() {
   const qc = useQueryClient();
   useEffect(() => setDrawer(false), [loc.pathname]);
 
-  const items: { to: string; label: string; show?: boolean; badge?: number }[] = [
-    { to: '/', label: t('nav.dashboard') },
-    { to: '/students', label: t('nav.students') },
-    { to: '/classes', label: t('nav.classes') },
-    { to: '/attendance', label: t('nav.attendance') },
-    { to: '/movements', label: t('nav.movements') },
-    { to: '/journal', label: t('nav.journal') },
-    { to: '/bjb', label: t('nav.bjb') },
-    { to: '/tjb', label: t('nav.tjb') },
-    { to: '/aralyk', label: t('nav.aralyk'), show: ref.classes.some((c) => c.grade >= 2 && c.grade <= 4) },
-    { to: '/tjb-analysis', label: t('nav.tjbAnalysis') },
-    { to: '/report', label: t('nav.report') },
-    { to: '/analytics', label: t('nav.analytics') },
-    { to: '/notifications', label: t('nav.notifications'), badge: unread },
-    { to: '/audit', label: t('nav.audit'), show: can(PERM.AUDIT) },
-    { to: '/admin', label: t('nav.admin'), show: can(PERM.USERS) || can(PERM.CLASSES) },
-    { to: '/settings', label: t('nav.settings') },
+  type Item = { to: string; label: string; icon: IconName; show?: boolean; badge?: number };
+  const groups: { key: string; label?: string; items: Item[] }[] = [
+    { key: 'home', items: [{ to: '/', label: t('nav.dashboard'), icon: 'home' }] },
+    {
+      key: 'students',
+      label: t('navGroup.students'),
+      items: [
+        { to: '/students', label: t('nav.students'), icon: 'users' },
+        { to: '/classes', label: t('nav.classes'), icon: 'grid' },
+        { to: '/attendance', label: t('nav.attendance'), icon: 'check' },
+        { to: '/movements', label: t('nav.movements'), icon: 'swap' },
+      ],
+    },
+    {
+      key: 'assess',
+      label: t('navGroup.assess'),
+      items: [
+        { to: '/journal', label: t('nav.journal'), icon: 'book' },
+        { to: '/bjb', label: t('nav.bjb'), icon: 'doc' },
+        { to: '/tjb', label: t('nav.tjb'), icon: 'doc' },
+        { to: '/aralyk', label: t('nav.aralyk'), icon: 'doc', show: ref.classes.some((c) => c.grade >= 2 && c.grade <= 4) },
+      ],
+    },
+    {
+      key: 'reports',
+      label: t('navGroup.reports'),
+      items: [
+        { to: '/tjb-analysis', label: t('nav.tjbAnalysis'), icon: 'chart' },
+        { to: '/report', label: t('nav.report'), icon: 'file' },
+        { to: '/analytics', label: t('nav.analytics'), icon: 'trend' },
+      ],
+    },
+    {
+      key: 'system',
+      label: t('navGroup.system'),
+      items: [
+        { to: '/notifications', label: t('nav.notifications'), icon: 'bell', badge: unread },
+        { to: '/audit', label: t('nav.audit'), icon: 'shield', show: can(PERM.AUDIT) },
+        { to: '/admin', label: t('nav.admin'), icon: 'sliders', show: can(PERM.USERS) || can(PERM.CLASSES) },
+        { to: '/settings', label: t('nav.settings'), icon: 'gear' },
+      ],
+    },
   ];
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('ustaz.navCollapsed') ?? '{}');
+    } catch {
+      return {};
+    }
+  });
+  const toggleGroup = (key: string) =>
+    setCollapsed((c) => {
+      const next = { ...c, [key]: !c[key] };
+      try {
+        localStorage.setItem('ustaz.navCollapsed', JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  const isActive = (to: string) => (to === '/' ? loc.pathname === '/' : loc.pathname === to || loc.pathname.startsWith(to + '/'));
   const switchSchool = (id: number) => {
     setSchoolOverride(id === me?.school?.id && !getSchoolOverride() ? null : id);
     qc.clear();
@@ -83,14 +126,34 @@ export function AppLayout() {
           </div>
         </div>
         <nav className="nav">
-          {items
-            .filter((i) => i.show !== false)
-            .map((i) => (
-              <NavLink key={i.to} to={i.to} end={i.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
-                <span>{i.label}</span>
-                {!!i.badge && <span className="count-badge">{i.badge}</span>}
-              </NavLink>
-            ))}
+          {groups.map((g) => {
+            const visible = g.items.filter((i) => i.show !== false);
+            if (!visible.length) return null;
+            const hasActive = visible.some((i) => isActive(i.to));
+            const open = !g.label || hasActive || !collapsed[g.key];
+            const groupBadge = visible.reduce((n, i) => n + (i.badge ?? 0), 0);
+            return (
+              <div key={g.key} className="nav-group">
+                {g.label && (
+                  <button className="nav-group-head" onClick={() => toggleGroup(g.key)} aria-expanded={open} disabled={hasActive}>
+                    <span>{g.label}</span>
+                    {!open && groupBadge > 0 && <span className="count-badge">{groupBadge}</span>}
+                    <svg className={`chev ${open ? 'open' : ''}`} viewBox="0 0 24 24" width="12" height="12" aria-hidden>
+                      <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+                {open &&
+                  visible.map((i) => (
+                    <NavLink key={i.to} to={i.to} end={i.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
+                      <NavIcon name={i.icon} />
+                      <span className="nav-label">{i.label}</span>
+                      {!!i.badge && <span className="count-badge">{i.badge}</span>}
+                    </NavLink>
+                  ))}
+              </div>
+            );
+          })}
         </nav>
         {me && me.schools.length > 1 && (
           <div className="field" style={{ marginTop: 'auto', padding: '0 4px' }}>
@@ -211,6 +274,31 @@ export function AppLayout() {
       </nav>
       <ChangePassword open={pwOpen} onClose={() => setPwOpen(false)} />
     </div>
+  );
+}
+
+type IconName = 'home' | 'users' | 'grid' | 'check' | 'swap' | 'book' | 'doc' | 'chart' | 'file' | 'trend' | 'bell' | 'shield' | 'sliders' | 'gear';
+const ICONS: Record<IconName, string> = {
+  home: 'M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10',
+  users: 'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M22 20v-2a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  check: 'M4 4h16v16H4zM8 12l3 3 5-6',
+  swap: 'M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7',
+  book: 'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 19V5M8 7h8',
+  doc: 'M14 3H6v18h12V7zM14 3v4h4M9 13h6M9 17h4',
+  chart: 'M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3',
+  file: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h3',
+  trend: 'M3 17l6-6 4 4 8-8M15 7h6v6',
+  bell: 'M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 21h4',
+  shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4',
+  sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4',
+  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2',
+};
+function NavIcon({ name }: { name: IconName }) {
+  return (
+    <svg className="nav-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path d={ICONS[name]} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
