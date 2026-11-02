@@ -18,6 +18,7 @@
     "admin": "Басқару",
     "settings": "Баптаулар"
   },
+  "navGroup": { "students": "Оқушылар", "assess": "Бағалау", "reports": "Талдау және есеп", "system": "Жүйе" },
   "tab": { "today": "Бүгін", "attendance": "Қатысу", "students": "Оқушылар", "assess": "Бағалау", "notif": "Хабар" },
   "common": {
     "save": "Сақтау",
