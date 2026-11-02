@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
@@ -6,7 +6,7 @@ import { PERM, useAuth } from '../lib/auth';
 import { useReference } from '../lib/reference';
 import { useToast } from '../lib/toast';
 import { pct } from '../lib/format';
-import { Badge, Card, Empty, ErrorState, Field, Modal, Spinner } from '../components/ui';
+import { Badge, Empty, ErrorState, Field, Modal, Spinner } from '../components/ui';
 
 export interface ClassRow {
   id: number;
@@ -39,6 +39,20 @@ export default function Classes() {
   );
 }
 
+/** Қазақ әліпбиі бойынша литер реті (А, Ә, Б, В, Г, Ғ, Д…): дерекқор сұрыптауы Ә-ні соңына қояды. */
+const KK_ALPHABET = 'АӘБВГҒДЕЁЖЗИЙКҚЛМНҢОӨПРСТУҰҮФХҺЦЧШЩЪЫІЬЭЮЯ';
+const letterRank = (l: string) => {
+  const i = KK_ALPHABET.indexOf(l.charAt(0).toUpperCase());
+  return i < 0 ? 99 : i;
+};
+
+function groupByGrade(rows: ClassRow[]): [number, ClassRow[]][] {
+  const sorted = [...rows].sort((a, b) => a.grade - b.grade || letterRank(a.letter) - letterRank(b.letter) || a.letter.localeCompare(b.letter));
+  const map = new Map<number, ClassRow[]>();
+  for (const c of sorted) map.set(c.grade, [...(map.get(c.grade) ?? []), c]);
+  return [...map.entries()];
+}
+
 /** Сыныптар тізімі; басқару рұқсаты болса — сынып жетекшісі, пән мұғалімдері және жаңа сынып. */
 export function ClassesManager() {
   const { year, ref } = useReference();
@@ -49,10 +63,22 @@ export function ClassesManager() {
   const teachers = useQuery({ queryKey: ['teachers'], queryFn: () => api.get<Teacher[]>('/classes/teachers'), enabled: manage });
   const [edit, setEdit] = useState<ClassRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const qc = useQueryClient();
+  const toast = useToast();
+  const autoHomeroom = useMutation({
+    mutationFn: () => api.post<{ updated: number; missing: string[] }>('/classes/homeroom/auto', { schoolYearId: year.id }),
+    onSuccess: (r) => {
+      ['classes', 'reference'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast(r.updated ? `${r.updated} сыныпқа жетекші тағайындалды${r.missing.length ? ` · «Сынып сағаты» жоқ: ${r.missing.join(', ')}` : ''}` : '«Сынып сағаты» мұғалімі табылмады', r.updated ? undefined : 'error');
+    },
+    onError: (e) => toast((e as Error).message, 'error'),
+  });
 
   if (q.isLoading) return <Spinner block />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const rows = q.data!;
+  const noHomeroom = rows.filter((c) => !c.homeroomTeacherId).length;
+  const byGrade = groupByGrade(rows);
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -68,60 +94,86 @@ export function ClassesManager() {
       {!rows.length ? (
         <Empty>Бұл оқу жылында сынып жоқ</Empty>
       ) : (
-        <div className="grid-auto">
-          {rows.map((c) => (
-            <Card
-              key={c.id}
-              title={
-                <span className="row">
-                  {c.name} {ref.classes.find((x) => x.id === c.id)?.isHomeroom && <Badge tone="acc">менің сыныбым</Badge>}
-                </span>
-              }
-              sub={c.homeroomTeacher ? `Сынып жетекшісі: ${c.homeroomTeacher}` : 'Сынып жетекшісі тағайындалмаған'}
-              action={
-                manage ? (
-                  <button className="btn sm" onClick={() => setEdit(c)}>
-                    Баптау
-                  </button>
-                ) : undefined
-              }
-            >
-              <div className="mini-kpis" style={{ gridTemplateColumns: 'repeat(3, minmax(0,1fr))' }}>
-                <div className="mini-kpi">
-                  <div className="l">Оқушы</div>
-                  <div className="v">{c.students}</div>
-                </div>
-                <div className="mini-kpi">
-                  <div className="l">Ұл / қыз</div>
-                  <div className="v">
-                    {c.boys} / {c.girls}
-                  </div>
-                </div>
-                <div className="mini-kpi">
-                  <div className="l">Қатысу</div>
-                  <div className={`v ${c.attendancePct != null && c.attendancePct < ref.attendanceThreshold ? 'c-bad' : ''}`}>{pct(c.attendancePct)}</div>
-                </div>
-              </div>
-              <div className="muted" style={{ fontSize: 12, margin: '10px 0 4px' }}>
-                Пәндер ({c.subjects.length})
-              </div>
-              <div className="row" style={{ gap: 4 }}>
-                {c.subjects.length ? c.subjects.map((s) => <Badge key={s.id}>{s.subject}</Badge>) : <span className="muted">—</span>}
-              </div>
-              <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn sm" onClick={() => nav(`/students?classId=${c.id}`)}>
-                  Оқушылар
-                </button>
-                <button className="btn sm" onClick={() => nav(`/attendance?classId=${c.id}`)}>
-                  Қатысу
-                </button>
-                <button className="btn sm" onClick={() => nav(`/analytics?classId=${c.id}`)}>
-                  Аналитика
-                </button>
-              </div>
-            </Card>
-          ))}
-        </div>
+        <>
+          {manage && noHomeroom > 0 && (
+            <div className="class-hint">
+              <span>
+                <b className="mono">{noHomeroom}</b> сыныпқа жетекші тағайындалмаған.
+              </span>
+              <button className="btn sm" disabled={autoHomeroom.isPending} onClick={() => autoHomeroom.mutate()} title="«Сынып сағаты» пәнінің мұғалімі сынып жетекшісі болып тағайындалады">
+                {autoHomeroom.isPending && <Spinner />} «Сынып сағаты» бойынша толтыру
+              </button>
+            </div>
+          )}
+          <div className="card flush table-wrap">
+            <table className="tbl class-tbl">
+              <thead>
+                <tr>
+                  <th style={{ width: 70 }}>Сынып</th>
+                  <th>Сынып жетекшісі</th>
+                  <th className="num">Оқушы</th>
+                  <th className="num">Ұл / қыз</th>
+                  <th className="num">Пән</th>
+                  <th className="num">Қатысу</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {byGrade.map(([grade, list]) => (
+                  <Fragment key={grade}>
+                    <tr className="class-grade-row">
+                      <td colSpan={7}>
+                        <b>{grade === 0 ? 'Даярлық' : `${grade}-сынып`}</b>
+                        <span className="muted">
+                          {' '}
+                          · {list.length} сынып · {list.reduce((s, c) => s + c.students, 0)} оқушы
+                        </span>
+                      </td>
+                    </tr>
+                    {list.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <b>{c.name}</b>
+                          {ref.classes.find((x) => x.id === c.id)?.isHomeroom && (
+                            <>
+                              {' '}
+                              <Badge tone="acc">менің</Badge>
+                            </>
+                          )}
+                        </td>
+                        <td className={c.homeroomTeacher ? '' : 'c-warn'}>{c.homeroomTeacher ?? 'тағайындалмаған'}</td>
+                        <td className="num mono">{c.students}</td>
+                        <td className="num mono muted">
+                          {c.boys} / {c.girls}
+                        </td>
+                        <td className="num mono" title={c.subjects.map((s) => s.subject).join(', ') || undefined}>
+                          {c.subjects.length || '—'}
+                        </td>
+                        <td className={`num mono ${c.attendancePct != null && c.attendancePct < ref.attendanceThreshold ? 'c-bad' : ''}`}>{c.attendancePct != null ? pct(c.attendancePct) : <span className="muted">—</span>}</td>
+                        <td className="class-actions">
+                          <button className="btn ghost sm" onClick={() => nav(`/students?classId=${c.id}`)}>
+                            Оқушылар
+                          </button>
+                          <button className="btn ghost sm" onClick={() => nav(`/attendance?classId=${c.id}`)}>
+                            Қатысу
+                          </button>
+                          <button className="btn ghost sm" onClick={() => nav(`/analytics?classId=${c.id}`)}>
+                            Аналитика
+                          </button>
+                          {manage && (
+                            <button className="btn sm" onClick={() => setEdit(c)}>
+                              Баптау
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
       {edit && <ClassEditor c={rows.find((x) => x.id === edit.id) ?? edit} teachers={teachers.data ?? []} onClose={() => setEdit(null)} />}
       {creating && <ClassCreate teachers={teachers.data ?? []} existing={rows.map((r) => r.name)} onClose={() => setCreating(false)} />}
