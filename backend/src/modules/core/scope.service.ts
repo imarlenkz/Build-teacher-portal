@@ -69,7 +69,7 @@ export class ScopeService {
   }
 
   /** Мектеп деңгейіндегі рұқсат, сынып жетекшісі немесе пәннің негізгі мұғалімі — барлық топқа қол жеткізеді. */
-  private async teachesWhole(user: AuthUser, classId: number, subjectId: number) {
+  async teachesWhole(user: AuthUser, classId: number, subjectId: number) {
     if (this.isSchoolWide(user)) return true;
     const a = await this.prisma.teachingAssignment.findFirst({ where: { classId, subjectId, teacherId: user.teacherId ?? -1 } });
     if (a) return true;

@@ -2,7 +2,7 @@ import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
-import type { AttendanceStatus, Paged, StudentRow } from '../api/types';
+import type { AttendanceStatus, LessonOfDay, Paged, StudentRow } from '../api/types';
 import { PERM, useAuth } from '../lib/auth';
 import { useReference } from '../lib/reference';
 import { useToast } from '../lib/toast';
@@ -34,14 +34,14 @@ const KEYS: Record<string, AttendanceStatus> = { '1': 'P', '2': 'N', '3': 'S', '
 
 export default function Attendance() {
   const { ref, subjectsOf } = useReference();
-  const [s, set] = useUrlState({ view: 'mark', classId: 0, subjectId: 0, date: '', period: 0, month: '' });
+  const [s, set] = useUrlState({ view: 'mark', classId: 0, subjectId: 0, groupId: 0, date: '', period: 0, month: '' });
   const lessons = useLessons();
 
   // Алдын ала толтыру: бүгінгі бірінші белгіленбеген сабақ.
   useEffect(() => {
     if (s.classId || !lessons.data) return;
     const l = lessons.data.lessons.find((x) => !x.marked) ?? lessons.data.lessons[0];
-    if (l) set({ classId: l.classId, subjectId: l.subjectId, date: lessons.data.date, period: l.period });
+    if (l) set({ classId: l.classId, subjectId: l.subjectId, groupId: l.groupId ?? 0, date: lessons.data.date, period: l.period });
     else if (ref.classes[0]) {
       const c = ref.classes[0];
       set({ classId: c.id, subjectId: subjectsOf(c.id)[0]?.id ?? 0, date: ref.today, period: 1 });
@@ -67,23 +67,25 @@ export default function Attendance() {
       {s.view === 'calendar' ? (
         <CalendarView classId={s.classId || ref.classes[0]?.id} subjectId={s.subjectId} month={s.month || (s.date || ref.today).slice(0, 7)} set={set} />
       ) : (
-        <MarkView classId={s.classId} subjectId={s.subjectId} date={s.date || ref.today} period={s.period || 1} set={set} />
+        <MarkView classId={s.classId} subjectId={s.subjectId} groupId={s.groupId} date={s.date || ref.today} period={s.period || 1} set={set} />
       )}
     </div>
   );
 }
 
-type Setter = (p: Partial<{ view: string; classId: number; subjectId: number; date: string; period: number; month: string }>) => void;
+type Setter = (p: Partial<{ view: string; classId: number; subjectId: number; groupId: number; date: string; period: number; month: string }>) => void;
 
-function MarkView({ classId, subjectId, date, period, set }: { classId: number; subjectId: number; date: string; period: number; set: Setter }) {
-  const { ref, subjectsOf } = useReference();
+function MarkView({ classId, subjectId, groupId: wanted, date, period, set }: { classId: number; subjectId: number; groupId: number; date: string; period: number; set: Setter }) {
+  const { ref, subjectsOf, groupsOf } = useReference();
   const { can } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
   const nav = useNavigate();
   const isMobile = useIsMobile();
   const subjects = subjectsOf(classId);
-  const params = { classId, subjectId, date, period };
+  const groups = groupsOf(classId, subjectId);
+  const groupId = groups.length ? (groups.some((g) => g.id === wanted) ? wanted : groups[0].id) : undefined;
+  const params = { classId, subjectId, date, period, ...(groupId ? { groupId } : {}) };
   const ready = !!(classId && subjectId && date && period);
   const sheet = useQuery({ queryKey: ['sheet', params], queryFn: () => api.get<Sheet>('/attendance/sheet', params), enabled: ready && can(PERM.ATTENDANCE) });
   const yearAtt = useQuery({
@@ -91,7 +93,7 @@ function MarkView({ classId, subjectId, date, period, set }: { classId: number; 
     queryFn: () => api.get<Paged<StudentRow>>('/students', { classId, pageSize: 200 }),
     enabled: !!classId && !isMobile,
   });
-  const dayLessons = useQuery({ queryKey: ['lessons', date], queryFn: () => api.get<{ lessons: { period: number; classId: number; subjectId: number; startTime: string; className: string; subject: string; marked: boolean }[] }>('/attendance/lessons', { date }), enabled: !!date });
+  const dayLessons = useQuery({ queryKey: ['lessons', date], queryFn: () => api.get<{ lessons: LessonOfDay[] }>('/attendance/lessons', { date }), enabled: !!date });
   const [marks, setMarks] = useState<Record<number, AttendanceStatus | null>>({});
   const [reasons, setReasons] = useState<Record<number, number | null>>({});
   const [missing, setMissing] = useState<Set<number>>(new Set());
@@ -203,7 +205,7 @@ function MarkView({ classId, subjectId, date, period, set }: { classId: number; 
             value={classId}
             onChange={(e) => {
               const c = Number(e.target.value);
-              set({ classId: c, subjectId: subjectsOf(c)[0]?.id ?? 0 });
+              set({ classId: c, subjectId: subjectsOf(c)[0]?.id ?? 0, groupId: 0 });
             }}
           >
             {ref.classes.map((c) => (
@@ -214,7 +216,7 @@ function MarkView({ classId, subjectId, date, period, set }: { classId: number; 
           </select>
         </Field>
         <Field label="Пән">
-          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value) })}>
+          <select className="select" value={subjectId} onChange={(e) => set({ subjectId: Number(e.target.value), groupId: 0 })}>
             {subjects.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.name}
@@ -222,6 +224,17 @@ function MarkView({ classId, subjectId, date, period, set }: { classId: number; 
             ))}
           </select>
         </Field>
+        {!!groups.length && (
+          <Field label="Топ">
+            <select className="select" value={groupId} onChange={(e) => set({ groupId: Number(e.target.value) })}>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Күні">
           <input className="input" type="date" value={date} max={ref.today} onChange={(e) => e.target.value && set({ date: e.target.value })} />
         </Field>
@@ -250,8 +263,9 @@ function MarkView({ classId, subjectId, date, period, set }: { classId: number; 
           lessons={thisDay}
           label={date === ref.today ? 'Бүгінгі' : dot(date)}
           classId={classId}
+          groupId={groupId ?? null}
           period={period}
-          onPick={(l) => set({ classId: l.classId, subjectId: l.subjectId, period: l.period })}
+          onPick={(l) => set({ classId: l.classId, subjectId: l.subjectId, groupId: l.groupId ?? 0, period: l.period })}
         />
       )}
 
@@ -467,22 +481,24 @@ function CalendarView({ classId, subjectId, month, set }: { classId: number; sub
   );
 }
 
-type DayLesson = { period: number; classId: number; subjectId: number; startTime: string; className: string; subject: string; marked: boolean };
+type DayLesson = LessonOfDay;
 
 /** Аз болса (мұғалімнің өз сабақтары) — бәрі бір қатарда; көп болса (бүкіл мектеп) — сабақ нөмірі бойынша топталады. */
-function DayLessons({ lessons, label, classId, period, onPick }: { lessons: DayLesson[]; label: string; classId: number; period: number; onPick: (l: DayLesson) => void }) {
+function DayLessons({ lessons, label, classId, groupId, period, onPick }: { lessons: DayLesson[]; label: string; classId: number; groupId: number | null; period: number; onPick: (l: DayLesson) => void }) {
   const periods = useMemo(() => [...new Set(lessons.map((l) => l.period))].sort((a, b) => a - b), [lessons]);
   const [open, setOpen] = useState<number | null>(null);
   const shown = open ?? (periods.includes(period) ? period : periods[0]);
-  const active = (l: DayLesson) => l.classId === classId && l.period === period;
+  const active = (l: DayLesson) => l.classId === classId && l.period === period && (!l.groupId || l.groupId === groupId);
+  const key = (l: DayLesson) => `${l.period}-${l.classId}-${l.groupId ?? 0}`;
 
   if (lessons.length <= 12)
     return (
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
         <span className="muted">{label} сабақтар:</span>
         {lessons.map((l) => (
-          <button key={`${l.period}-${l.classId}`} className={`btn sm ${active(l) ? 'primary' : ''}`} onClick={() => onPick(l)} title={l.marked ? 'Белгіленді' : 'Белгіленбеген'}>
-            {l.period}. {l.className} {l.subject} {l.marked ? '✓' : ''}
+          <button key={key(l)} className={`btn sm ${active(l) ? 'primary' : ''}`} onClick={() => onPick(l)} title={`${l.teacher} · ${l.marked ? 'белгіленді' : 'белгіленбеген'}`}>
+            {l.period}. {l.className} {l.subject}
+            {l.groupName ? ` · ${l.groupName}` : ''} {l.marked ? '✓' : ''}
           </button>
         ))}
       </div>
@@ -490,7 +506,7 @@ function DayLessons({ lessons, label, classId, period, onPick }: { lessons: DayL
 
   const list = lessons
     .filter((l) => l.period === shown)
-    .sort((a, b) => a.className.localeCompare(b.className, 'kk', { numeric: true }));
+    .sort((a, b) => a.className.localeCompare(b.className, 'kk', { numeric: true }) || (a.groupName ?? '').localeCompare(b.groupName ?? '', 'kk', { numeric: true }));
   return (
     <div className="stack" style={{ gap: 6 }}>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -510,17 +526,24 @@ function DayLessons({ lessons, label, classId, period, onPick }: { lessons: DayL
       <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
         {list.map((l) => (
           <button
-            key={`${l.period}-${l.classId}`}
+            key={key(l)}
             className={`btn sm ${active(l) ? 'primary' : l.marked ? 'ok' : ''}`}
             style={{ minWidth: 48, padding: '2px 8px' }}
             onClick={() => onPick(l)}
-            title={`${l.subject} · ${l.marked ? 'белгіленді' : 'белгіленбеген'}`}
+            title={`${l.subject}${l.groupName ? ` · ${l.groupName}` : ''} · ${l.teacher} · ${l.marked ? 'белгіленді' : 'белгіленбеген'}`}
           >
             {l.className}
+            {l.groupName ? <span style={{ opacity: 0.75 }}> · {shortGroup(l.groupName)}</span> : null}
             {l.marked ? ' ✓' : ''}
           </button>
         ))}
       </div>
     </div>
   );
+}
+
+/** «1-топ» → «1-т», «1-топ · Тынышбай» → «1-т», басқасы — алғашқы сөзі. */
+function shortGroup(name: string) {
+  const d = /\d+/.exec(name);
+  return d ? `${d[0]}-т` : name.split(/[\s·]+/)[0];
 }

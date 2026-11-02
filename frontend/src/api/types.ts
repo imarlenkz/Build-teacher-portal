@@ -112,6 +112,9 @@ export interface LessonOfDay {
   className: string;
   subjectId: number;
   subject: string;
+  /** Пән топтарға бөлінсе — топ. */
+  groupId: number | null;
+  groupName: string | null;
   teacher: string;
   students: number;
   marked: boolean;
