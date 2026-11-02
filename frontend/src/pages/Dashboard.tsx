@@ -10,6 +10,7 @@ import { useIsMobile } from '../hooks';
 import { BarRow, Card, DashboardCard, Empty, ErrorState, Segmented, Spinner } from '../components/ui';
 import { AreaTrend, Bars, Donut, Legend, LineTrend } from '../components/charts';
 import { NotificationList } from '../components/NotificationPanel';
+import { DayLessons } from '../components/DayLessons';
 
 type Period = 'today' | 'week' | 'month' | 'quarter' | 'year';
 
@@ -43,6 +44,9 @@ const PERIOD_WORD: Record<Period, string> = { today: 'бүгін', week: 'осы
 
 export const attendanceHref = (l: Pick<LessonOfDay, 'classId' | 'subjectId' | 'period' | 'groupId'>, date: string) =>
   `/attendance?classId=${l.classId}&subjectId=${l.subjectId}&date=${date}&period=${l.period}${l.groupId ? `&groupId=${l.groupId}` : ''}`;
+
+/** Бірінші белгіленбеген сабақ нөмірі (бәрі белгіленсе — соңғысы). */
+const firstOpenPeriod = (ls: LessonOfDay[]) => ls.find((l) => !l.marked)?.period ?? ls[ls.length - 1]?.period ?? 1;
 
 export function useLessons(date?: string) {
   return useQuery({
@@ -163,6 +167,8 @@ function DashBody({ d, period, lessons, lessonsDate, holiday, canNat }: { d: Das
         <Card title="Бүгінгі сабақтар" sub={holiday ? 'Демалыс / каникул' : `${todayMarked} оқушы белгіленді`}>
           {!lessons.length ? (
             <Empty>{holiday ? 'Бүгін сабақ жоқ' : 'Кестеде сабақ жоқ'}</Empty>
+          ) : lessons.length > 12 ? (
+            <DayLessons lessons={lessons} label={null} classId={0} groupId={null} period={firstOpenPeriod(lessons)} onPick={(l) => nav(attendanceHref(l, lessonsDate))} />
           ) : (
             <table className="tbl">
               <tbody>
@@ -332,6 +338,10 @@ function MobileToday() {
         <Spinner block />
       ) : !ls.length ? (
         <Empty>{lessons.data?.holiday ? 'Бүгін сабақ жоқ — демалыс немесе каникул' : 'Бүгін кестеде сабақ жоқ'}</Empty>
+      ) : ls.length > 12 ? (
+        <Card>
+          <DayLessons lessons={ls} label={null} classId={0} groupId={null} period={firstOpenPeriod(ls)} onPick={(l) => nav(attendanceHref(l, lessons.data!.date))} />
+        </Card>
       ) : (
         <div className="m-list">
           {ls.map((l) => (
