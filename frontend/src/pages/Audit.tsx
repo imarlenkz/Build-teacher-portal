@@ -1,12 +1,14 @@
-import { useMemo } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { Paged } from '../api/types';
 import { useReference } from '../lib/reference';
+import { useAuth } from '../lib/auth';
+import { useToast } from '../lib/toast';
 import { dateTime } from '../lib/format';
 import { useUrlState } from '../hooks';
 import { DataTable, Col } from '../components/DataTable';
-import { Badge, DateRangePicker, ErrorState, FilterPanel, SearchInput } from '../components/ui';
+import { Badge, ConfirmDialog, DateRangePicker, ErrorState, FilterPanel, SearchInput } from '../components/ui';
 
 interface AuditRow {
   id: string;
@@ -37,6 +39,7 @@ const ENTITIES: Record<string, string> = {
   school_year: 'Оқу жылы',
   backup: 'Резервтік көшірме',
   external_result: 'Тестілеу',
+  audit: 'Аудит',
 };
 
 const show = (v: unknown): string => {
@@ -49,12 +52,26 @@ const show = (v: unknown): string => {
   return '';
 };
 
-/** Аудит журналы: кім, қашан, не істеді, ескі және жаңа мән. Тек оқу үшін — жазбаларды өзгерту мүмкін емес. */
+/** Аудит журналы: кім, қашан, не істеді, ескі және жаңа мән. Жазбаларды өзгерту мүмкін емес; Admin сүзгі бойынша тазалай алады (тазалаудың өзі аудитке жазылады). */
 export default function Audit() {
   const { ref } = useReference();
   const [s, set] = useUrlState({ search: '', entity: '', from: '', to: '', page: 1, pageSize: 50 });
   const query = { search: s.search, entity: s.entity || undefined, from: s.from || undefined, to: s.to || undefined, page: s.page, pageSize: s.pageSize };
   const q = useQuery({ queryKey: ['audit', query], queryFn: () => api.get<Paged<AuditRow>>('/audit', query), placeholderData: keepPreviousData });
+  const { can } = useAuth();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [confirmClear, setConfirmClear] = useState(false);
+  const clear = useMutation({
+    mutationFn: () => api.post<{ deleted: number }>('/audit/clear', { search: s.search || undefined, entity: s.entity || undefined, from: s.from || undefined, to: s.to || undefined }),
+    onSuccess: (r) => {
+      setConfirmClear(false);
+      set({ page: 1 });
+      qc.invalidateQueries({ queryKey: ['audit'] });
+      toast(`${r.deleted} жазба жойылды`);
+    },
+    onError: (e) => toast((e as Error).message, 'error'),
+  });
   const columns = useMemo<Col<AuditRow>[]>(
     () => [
       { id: 'at', header: 'Уақыты', enableSorting: false, meta: { label: 'Уақыты' }, cell: ({ row: { original: r } }) => <span className="mono" style={{ whiteSpace: 'nowrap' }}>{dateTime(r.at)}</span> },
@@ -111,6 +128,11 @@ export default function Audit() {
       <div className="page-head">
         <h1 className="page-title">Аудит журналы</h1>
         <span className="page-sub">{q.data ? `${q.data.total} жазба` : ''}</span>
+        {can('users.manage') && (
+          <button className="btn danger" style={{ marginLeft: 'auto' }} disabled={!q.data?.total} onClick={() => setConfirmClear(true)}>
+            {active ? 'Сүзгідегіні тазалау' : 'Журналды тазалау'}
+          </button>
+        )}
       </div>
       <FilterPanel active={active} onClear={() => set({ search: '', entity: '', from: '', to: '', page: 1 })}>
         <SearchInput value={s.search} onChange={(v) => set({ search: v, page: 1 })} placeholder="Пайдаланушы, әрекет немесе мазмұн" />
@@ -134,6 +156,22 @@ export default function Audit() {
           server={{ total: q.data?.total ?? 0, page: s.page, pageSize: s.pageSize, onChange: (c) => set({ page: c.page ?? s.page, pageSize: c.pageSize ?? s.pageSize }) }}
         />
       )}
+      <ConfirmDialog
+        open={confirmClear}
+        danger
+        title="Аудит журналын тазалау"
+        text={
+          active ? (
+            <>Ағымдағы сүзгіге сай <b>{q.data?.total ?? 0}</b> жазба біржола жойылады. Тазалау әрекетінің өзі журналға жазылады.</>
+          ) : (
+            <>Мектептің барлық аудит жазбасы (<b>{q.data?.total ?? 0}</b>) біржола жойылады. Тек бір бөлігін өшіру үшін алдымен күн не нысан бойынша сүзіңіз. Тазалау әрекетінің өзі журналға жазылады.</>
+          )
+        }
+        confirmLabel="Тазалау"
+        busy={clear.isPending}
+        onConfirm={() => clear.mutate()}
+        onClose={() => setConfirmClear(false)}
+      />
     </div>
   );
 }
