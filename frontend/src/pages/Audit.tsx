@@ -36,6 +36,7 @@ const ENTITIES: Record<string, string> = {
   school: 'Мектеп',
   school_year: 'Оқу жылы',
   backup: 'Резервтік көшірме',
+  external_result: 'Тестілеу',
 };
 
 const show = (v: unknown): string => {
