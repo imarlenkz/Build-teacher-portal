@@ -158,6 +158,38 @@ export class ClassesService {
     return { ok: true };
   }
 
+  /**
+   * Жетекшісі жоқ сыныптарға «Сынып сағаты» пәнінің мұғалімін сынып жетекшісі етіп тағайындау.
+   * BilimClass/Nexus импортында жетекші бөлек келмейді, ал сынып сағатын әдетте жетекші өткізеді.
+   */
+  async autoHomeroom(user: AuthUser, schoolYearId: number | undefined, meta: RequestMeta) {
+    const year = schoolYearId ? await this.prisma.schoolYear.findFirstOrThrow({ where: { id: schoolYearId, schoolId: user.schoolId } }) : await this.scope.currentYear(user.schoolId);
+    const classes = await this.prisma.class.findMany({ where: { schoolId: user.schoolId, schoolYearId: year.id, homeroomTeacherId: null }, orderBy: [{ grade: 'asc' }, { letter: 'asc' }] });
+    if (!classes.length) return { updated: 0, missing: [] as string[] };
+    const assignments = await this.prisma.teachingAssignment.findMany({
+      where: { schoolId: user.schoolId, schoolYearId: year.id, classId: { in: classes.map((c) => c.id) } },
+      include: { subject: true, teacher: { include: { user: { select: { fullName: true } } } } },
+    });
+    const isHomeroomSubject = (name: string) => /сынып\s+сағат|классн\S*\s+час/iu.test(name);
+    const picks = classes
+      .map((c) => ({ c, a: assignments.find((a) => a.classId === c.id && isHomeroomSubject(a.subject.name)) }))
+      .filter((x): x is { c: (typeof classes)[number]; a: (typeof assignments)[number] } => !!x.a);
+    const missing = classes.filter((c) => !picks.some((p) => p.c.id === c.id)).map((c) => c.name);
+    if (picks.length) {
+      await this.prisma.$transaction(async (tx) => {
+        for (const { c, a } of picks) await tx.class.update({ where: { id: c.id }, data: { homeroomTeacherId: a.teacherId } });
+        await this.audit.record(
+          user,
+          { action: 'Сынып жетекшілерін «Сынып сағаты» бойынша тағайындады', entity: 'class', summary: `${picks.length} сынып`, after: picks.map(({ c, a }) => `${c.name}: ${a.teacher.user.fullName}`).join(', ') },
+          meta,
+          tx,
+        );
+      });
+      await this.cache.bump(user.schoolId);
+    }
+    return { updated: picks.length, missing };
+  }
+
   async addAssignment(user: AuthUser, classId: number, dto: AssignmentInput, meta: RequestMeta) {
     const c = await this.prisma.class.findFirst({ where: { id: classId, schoolId: user.schoolId } });
     if (!c) throw new NotFoundException('Сынып табылмады');
@@ -302,6 +334,12 @@ class ClassesController {
   @RequirePermissions(P.CLASSES_MANAGE)
   homeroom(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: HomeroomInput, @ReqMeta() meta: RequestMeta) {
     return this.classes.setHomeroom(user, id, dto.teacherId ?? null, meta);
+  }
+
+  @Post('homeroom/auto')
+  @RequirePermissions(P.CLASSES_MANAGE)
+  autoHomeroom(@CurrentUser() user: AuthUser, @Body() dto: YearQuery, @ReqMeta() meta: RequestMeta) {
+    return this.classes.autoHomeroom(user, dto.schoolYearId, meta);
   }
 
   @Post(':id/assignments')

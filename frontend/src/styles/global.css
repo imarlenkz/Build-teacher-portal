@@ -1953,3 +1953,42 @@ button.kpi:hover {
 .tbl tbody tr.tbl-group:hover {
   background: var(--soft);
 }
+
+/* ───────── Сыныптар (параллель бойынша кесте) ───────── */
+.class-tbl td {
+  vertical-align: middle;
+}
+.class-tbl td:first-child {
+  white-space: nowrap;
+}
+.class-tbl .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.class-tbl tr.class-grade-row td {
+  background: var(--soft);
+  font-size: 12.5px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.class-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.class-actions .btn.ghost {
+  color: var(--muted);
+}
+.class-actions .btn.ghost:hover {
+  color: inherit;
+}
+.class-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 13px;
+}
