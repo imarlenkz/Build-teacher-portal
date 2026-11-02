@@ -13,6 +13,13 @@ export interface AuditEntry {
   after?: unknown;
 }
 
+export interface AuditFilter {
+  search?: string;
+  entity?: string;
+  from?: string;
+  to?: string;
+}
+
 type Tx = Prisma.TransactionClient | PrismaService;
 
 /** Адам емес әрекет етуші (мыс. түнгі Nexus автосинхрондауы). */
@@ -53,8 +60,8 @@ export class AuditService {
     }
   }
 
-  async list(schoolId: number, q: { page: number; pageSize: number; search?: string; entity?: string; from?: string; to?: string }) {
-    const where: Prisma.AuditLogWhereInput = {
+  private where(schoolId: number, q: AuditFilter): Prisma.AuditLogWhereInput {
+    return {
       schoolId,
       ...(q.entity ? { entity: q.entity } : {}),
       ...(q.from || q.to
@@ -70,6 +77,10 @@ export class AuditService {
           }
         : {}),
     };
+  }
+
+  async list(schoolId: number, q: AuditFilter & { page: number; pageSize: number }) {
+    const where = this.where(schoolId, q);
     const [items, total] = await this.prisma.$transaction([
       this.prisma.auditLog.findMany({ where, orderBy: { at: 'desc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
       this.prisma.auditLog.count({ where }),
@@ -80,5 +91,29 @@ export class AuditService {
       page: q.page,
       pageSize: q.pageSize,
     };
+  }
+
+  /**
+   * Сүзгіге сай аудит жазбаларын жояды (сүзгі бос болса — мектептің барлық жазбасы).
+   * Тазалау әрекетінің өзі жаңа аудит жазбасы ретінде сақталады, сондықтан ізсіз өшіру мүмкін емес.
+   */
+  async clear(user: AuthUser, q: AuditFilter, meta?: RequestMeta) {
+    const where = this.where(user.schoolId, q);
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.auditLog.deleteMany({ where });
+      const filter = Object.fromEntries(Object.entries(q).filter(([, v]) => v));
+      await this.record(
+        user,
+        {
+          action: 'Аудит журналын тазалады',
+          entity: 'audit',
+          summary: `${count} жазба жойылды${Object.keys(filter).length ? ' (сүзгі бойынша)' : ''}`,
+          after: { deleted: count, ...filter },
+        },
+        meta,
+        tx,
+      );
+      return { deleted: count };
+    });
   }
 }
