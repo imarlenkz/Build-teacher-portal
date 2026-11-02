@@ -246,19 +246,13 @@ function MarkView({ classId, subjectId, date, period, set }: { classId: number; 
       </div>
 
       {thisDay.length > 0 && (
-        <div className="row" style={{ gap: 6 }}>
-          <span className="muted">{date === ref.today ? 'Бүгінгі' : dot(date)} сабақтар:</span>
-          {thisDay.map((l) => (
-            <button
-              key={`${l.period}-${l.classId}`}
-              className={`btn sm ${l.classId === classId && l.period === period ? 'primary' : ''}`}
-              onClick={() => set({ classId: l.classId, subjectId: l.subjectId, period: l.period })}
-              title={l.marked ? 'Белгіленді' : 'Белгіленбеген'}
-            >
-              {l.period}. {l.className} {l.subject} {l.marked ? '✓' : ''}
-            </button>
-          ))}
-        </div>
+        <DayLessons
+          lessons={thisDay}
+          label={date === ref.today ? 'Бүгінгі' : dot(date)}
+          classId={classId}
+          period={period}
+          onPick={(l) => set({ classId: l.classId, subjectId: l.subjectId, period: l.period })}
+        />
       )}
 
       {isFuture || isSunday ? (
@@ -469,6 +463,64 @@ function CalendarView({ classId, subjectId, month, set }: { classId: number; sub
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+type DayLesson = { period: number; classId: number; subjectId: number; startTime: string; className: string; subject: string; marked: boolean };
+
+/** Аз болса (мұғалімнің өз сабақтары) — бәрі бір қатарда; көп болса (бүкіл мектеп) — сабақ нөмірі бойынша топталады. */
+function DayLessons({ lessons, label, classId, period, onPick }: { lessons: DayLesson[]; label: string; classId: number; period: number; onPick: (l: DayLesson) => void }) {
+  const periods = useMemo(() => [...new Set(lessons.map((l) => l.period))].sort((a, b) => a - b), [lessons]);
+  const [open, setOpen] = useState<number | null>(null);
+  const shown = open ?? (periods.includes(period) ? period : periods[0]);
+  const active = (l: DayLesson) => l.classId === classId && l.period === period;
+
+  if (lessons.length <= 12)
+    return (
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <span className="muted">{label} сабақтар:</span>
+        {lessons.map((l) => (
+          <button key={`${l.period}-${l.classId}`} className={`btn sm ${active(l) ? 'primary' : ''}`} onClick={() => onPick(l)} title={l.marked ? 'Белгіленді' : 'Белгіленбеген'}>
+            {l.period}. {l.className} {l.subject} {l.marked ? '✓' : ''}
+          </button>
+        ))}
+      </div>
+    );
+
+  const list = lessons
+    .filter((l) => l.period === shown)
+    .sort((a, b) => a.className.localeCompare(b.className, 'kk', { numeric: true }));
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <span className="muted">{label} сабақтар:</span>
+        <div className="seg" role="tablist" style={{ maxWidth: '100%', overflowX: 'auto', flexWrap: 'nowrap' }}>
+          {periods.map((p) => {
+            const all = lessons.filter((l) => l.period === p);
+            const done = all.filter((l) => l.marked).length;
+            return (
+              <button key={p} role="tab" aria-pressed={p === shown} aria-selected={p === shown} onClick={() => setOpen(p)} title={`${done} / ${all.length} сынып белгіленді`} style={{ whiteSpace: 'nowrap' }}>
+                {p}-сабақ <span className={done === all.length ? 'c-ok' : 'muted'} style={{ fontSize: 11.5 }}>{done}/{all.length}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+        {list.map((l) => (
+          <button
+            key={`${l.period}-${l.classId}`}
+            className={`btn sm ${active(l) ? 'primary' : l.marked ? 'ok' : ''}`}
+            style={{ minWidth: 48, padding: '2px 8px' }}
+            onClick={() => onPick(l)}
+            title={`${l.subject} · ${l.marked ? 'белгіленді' : 'белгіленбеген'}`}
+          >
+            {l.className}
+            {l.marked ? ' ✓' : ''}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
