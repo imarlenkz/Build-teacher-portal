@@ -47,10 +47,10 @@ export function LoginPage() {
       <form className="login-card" onSubmit={submit} noValidate>
         <div className="brand" style={{ padding: 0 }}>
           <div className="logo" aria-hidden>
-            Ұ
+            U
           </div>
           <div>
-            <div className="brand-name">Ұстаз</div>
+            <div className="brand-name">USTAZ</div>
             <div className="brand-sub">мектеп порталы</div>
           </div>
         </div>

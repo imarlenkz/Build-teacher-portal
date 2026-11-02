@@ -329,7 +329,7 @@ export class NexusService {
     const slots = new Set(plan.slots.map((x) => `${x.classKey}|${x.subject}|${x.weekday}|${x.period}`)).size;
     const current = await this.prisma.timetableSlot.count({ where: { schoolId, assignment: { schoolYearId: year.id } } });
     if (current > 0 && slots < current * 0.5) {
-      const msg = `Өткізілді: Nexus-те ${slots} сабақ орны, Ұстазда ${current} — тым аз, кесте өзгертілмеді`;
+      const msg = `Өткізілді: Nexus-те ${slots} сабақ орны, USTAZ-да ${current} — тым аз, кесте өзгертілмеді`;
       await this.saveSync(schoolId, { ok: false, result: msg, prevHash });
       return msg;
     }

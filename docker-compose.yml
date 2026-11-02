@@ -1,4 +1,4 @@
-# «Ұстаз» — production стегі: nginx (TLS) → frontend (статикалық) + backend (API) → postgres + redis.
+# «USTAZ» — production стегі: nginx (TLS) → frontend (статикалық) + backend (API) → postgres + redis.
 # Іске қосу: cp .env.example .env && (мәндерді толтырыңыз) && docker compose up -d --build
 
 name: ustaz

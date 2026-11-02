@@ -112,7 +112,7 @@ export class BilimClassService {
         letter: parsed.letter,
       },
     });
-    if (!cls) return empty([`Ұстазда ${parsed.grade} ${parsed.letter} сыныбы жоқ (${year.name}) — сынып өткізілді`]);
+    if (!cls) return empty([`USTAZ-да ${parsed.grade} ${parsed.letter} сыныбы жоқ (${year.name}) — сынып өткізілді`]);
 
     const [students, subjects, teachers, existingGroups] = await Promise.all([
       this.prisma.student.findMany({
@@ -153,7 +153,7 @@ export class BilimClassService {
     const creates = (name: string) => createSubjects || toCreate.has(normName(name));
     const hasSubject = (name: string) => subjectId.has(normName(name)) || creates(name);
     const skippedSubjects = plan.missingSubjects.filter((n) => !creates(n));
-    if (skippedSubjects.length) warnings.unshift(`Ұстазда жоқ пәндер өткізіледі: ${skippedSubjects.join(', ')}`);
+    if (skippedSubjects.length) warnings.unshift(`USTAZ-да жоқ пәндер өткізіледі: ${skippedSubjects.join(', ')}`);
 
     const groups = plan.groups.filter((g) => hasSubject(g.subject));
     const fo = plan.fo.filter((c) => hasSubject(c.subject));

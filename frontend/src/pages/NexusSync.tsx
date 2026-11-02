@@ -146,7 +146,7 @@ export function NexusSync() {
               <tr>
                 <th>Мұғалім</th>
                 <th>Email</th>
-                <th>Ұстаз-да</th>
+                <th>USTAZ-да</th>
               </tr>
             </thead>
             <tbody>

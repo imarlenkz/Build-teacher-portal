@@ -191,7 +191,7 @@ export function BilimClassImport() {
       {rows.some((r) => r.res) && (
         <Card title={applied ? 'Импорт нәтижесі' : 'Алдын ала қарау'} sub={applied ? 'Деректер сақталды' : 'Әзірге ештеңе сақталған жоқ'}>
           <div className="grid-auto" style={{ gap: 10, marginBottom: 12 }}>
-            <DashboardCard label="Сыныптар" value={`${ready.length} / ${rows.length}`} sub="Ұстазда табылды" />
+            <DashboardCard label="Сыныптар" value={`${ready.length} / ${rows.length}`} sub="USTAZ-да табылды" />
             <DashboardCard label="Оқушылар" value={sum(rows, (r) => r.students.matched)} sub={`табылмады: ${sum(rows, (r) => r.students.unmatched.length)}`} />
             <DashboardCard label="Пән топтары" value={sum(rows, (r) => r.groups.total)} sub={`жаңа: ${sum(rows, (r) => r.groups.create)}`} />
             <DashboardCard label="ФО бағалары" value={sum(rows, (r) => r.fo.marks)} sub={`${sum(rows, (r) => r.fo.columns)} баған`} />
@@ -201,7 +201,7 @@ export function BilimClassImport() {
           {unknown.length > 0 && (
             <div className={skippedCount ? 'err-box' : undefined} style={{ marginBottom: 12, fontSize: 13 }}>
               <div style={{ marginBottom: 8 }}>
-                <b>BilimClass пәндерін Ұстаз пәндерімен сәйкестендіріңіз.</b> Бұл пәндердің атауы Ұстазда жоқ. Таңдалмаған пәннің топтары мен бағалары өткізіледі
+                <b>BilimClass пәндерін USTAZ пәндерімен сәйкестендіріңіз.</b> Бұл пәндердің атауы USTAZ-да жоқ. Таңдалмаған пәннің топтары мен бағалары өткізіледі
                 {skippedCount ? ` (қазір ${skippedCount} пән өткізіледі)` : ''}.
               </div>
               <table className="tbl">
@@ -236,7 +236,7 @@ export function BilimClassImport() {
             <thead>
               <tr>
                 <th>BilimClass</th>
-                <th>Ұстаз</th>
+                <th>USTAZ</th>
                 <th className="num">Оқушы</th>
                 <th className="num">Топ</th>
                 <th className="num">ФО</th>

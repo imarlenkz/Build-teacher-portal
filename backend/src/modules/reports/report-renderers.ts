@@ -220,7 +220,7 @@ export class ReportRenderers {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 44],
       defaultStyle: { font: 'Plex', fontSize: 10, color: INK },
-      info: { title: `Тоқсандық есеп · ${m.className} · ${m.subject} · ${m.quarterLabel}`, author: m.generatedBy, creator: 'Ұстаз' },
+      info: { title: `Тоқсандық есеп · ${m.className} · ${m.subject} · ${m.quarterLabel}`, author: m.generatedBy, creator: 'USTAZ' },
       footer: (page, pages) => ({
         columns: [
           { text: `${m.school} · ${m.className} · ${m.subject} · ${m.quarterLabel}`, fontSize: 7.5, color: MUTED },

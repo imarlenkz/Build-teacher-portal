@@ -43,7 +43,7 @@ async function bootstrap() {
     const doc = SwaggerModule.createDocument(
       app,
       new DocumentBuilder()
-        .setTitle('Ұстаз API')
+        .setTitle('USTAZ API')
         .setDescription('Мектеп мұғаліміне арналған портал API. Аутентификация: httpOnly cookie + X-CSRF-Token немесе Bearer.')
         .setVersion('1.0')
         .addBearerAuth()

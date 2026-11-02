@@ -63,7 +63,7 @@ export function TestileuResults() {
       >
         {!d.configured ? (
           <div className="err-box">
-            Серверде <code>TESTILEU_INTEGRATION_KEY</code> орнатылмаған — нәтижелер қабылданбайды. Ұстаздың .env файлына кілтті, ал Тестілеудің .env файлына сол кілтті{' '}
+            Серверде <code>TESTILEU_INTEGRATION_KEY</code> орнатылмаған — нәтижелер қабылданбайды. USTAZ-дың .env файлына кілтті, ал Тестілеудің .env файлына сол кілтті{' '}
             <code>USTAZ_INTEGRATION_KEY</code> ретінде қосып, екі жүйені де қайта іске қосыңыз.
           </div>
         ) : !d.schoolCode ? (
@@ -84,7 +84,7 @@ export function TestileuResults() {
 
       <Card
         title="Соңғы нәтижелер"
-        sub="Оқушы, пән немесе сынып Ұстазда түзетілсе, «Қайта өңдеу» сәйкестенбеген нәтижелерді журналға қайта түсіреді."
+        sub="Оқушы, пән немесе сынып USTAZ-да түзетілсе, «Қайта өңдеу» сәйкестенбеген нәтижелерді журналға қайта түсіреді."
         action={
           <div className="row">
             <select className="select" value={status} onChange={(e) => setStatus(e.target.value as Status | '')}>
