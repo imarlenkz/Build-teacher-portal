@@ -11,8 +11,9 @@ import { Badge, Card, ConfirmDialog, DashboardCard, Empty, ErrorState, Field, Mo
 import { ClassesManager } from './Classes';
 import { NexusSync } from './NexusSync';
 import { BilimClassImport } from './BilimClassImport';
+import { TestileuResults } from './TestileuResults';
 
-type Tab = 'users' | 'classes' | 'subjects' | 'years' | 'schools' | 'nexus' | 'bilimclass';
+type Tab = 'users' | 'classes' | 'subjects' | 'years' | 'schools' | 'nexus' | 'bilimclass' | 'testileu';
 
 export default function Admin() {
   const { can, me } = useAuth();
@@ -24,6 +25,7 @@ export default function Admin() {
     { id: 'schools', label: 'Мектептер', show: can(PERM.SCHOOLS) },
     { id: 'nexus', label: 'Nexus', show: can(PERM.CLASSES) },
     { id: 'bilimclass', label: 'BilimClass', show: can(PERM.CLASSES) },
+    { id: 'testileu', label: 'Тестілеу', show: can(PERM.CLASSES) },
   ];
   const visible = tabs.filter((t) => t.show);
   const [s, set] = useUrlState({ tab: visible[0]?.id ?? 'classes' });
@@ -54,6 +56,7 @@ export default function Admin() {
       {tab === 'schools' && <Schools />}
       {tab === 'nexus' && <NexusSync />}
       {tab === 'bilimclass' && <BilimClassImport />}
+      {tab === 'testileu' && <TestileuResults />}
     </div>
   );
 }

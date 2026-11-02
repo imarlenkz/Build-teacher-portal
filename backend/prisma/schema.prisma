@@ -127,6 +127,7 @@ model School {
   gradeColumns     GradeColumn[]
   quarterGrades    QuarterGrade[]
   subjectGroups    SubjectGroup[]
+  externalResults  ExternalResult[]
 
   @@map("schools")
 }
@@ -376,6 +377,7 @@ model Student {
   grades            Grade[]
   quarterGrades     QuarterGrade[]
   groupMemberships  SubjectGroupMember[]
+  externalResults   ExternalResult[]
 
   @@unique([schoolId, studentCode])
   @@unique([schoolId, iinHash])
@@ -798,6 +800,42 @@ model Backup {
 }
 
 /// Платформа деңгейіндегі баптаулар (мысалы, автоматты backup).
+/// Сыртқы жүйеден (Тестілеу, test.imarlen.kz) келген тест нәтижесі және оның журналға түсуі.
+model ExternalResult {
+  id          Int      @id @default(autoincrement())
+  schoolId    Int      @map("school_id")
+  /// Дереккөз: "testileu".
+  source      String
+  /// Дереккөздегі әрекет (attempt) id-і — қайта жіберілсе жаңартылады.
+  sourceId    String   @map("source_id")
+  testId      String?  @map("test_id")
+  testTitle   String   @map("test_title")
+  subjectName String?  @map("subject_name")
+  className   String?  @map("class_name")
+  studentName String   @map("student_name")
+  studentId   Int?     @map("student_id")
+  /// FO | BJB | TJB | ARALYK
+  kind        String?
+  percent     Decimal  @db.Decimal(5, 2)
+  submittedAt DateTime @map("submitted_at")
+  /// APPLIED (журналға түсті) | UNMATCHED (оқушы/пән/сынып табылмады) | SKIPPED (ереже бойынша өткізілді) | SUPERSEDED (кейінгі әрекет алмастырды)
+  status      String
+  reason      String?
+  /// Журналдағы орны: "grade:<id>" немесе "result:<id>".
+  target      String?
+  payload     Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceId])
+  @@index([schoolId, status])
+  @@index([schoolId, testId, studentId])
+  @@map("external_results")
+}
+
 model SystemSetting {
   key       String   @id
   value     Json
