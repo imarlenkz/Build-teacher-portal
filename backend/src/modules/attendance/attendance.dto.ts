@@ -8,6 +8,8 @@ export class SheetQuery {
   @Type(() => Number) @IsInt() subjectId: number;
   @IsDateStr() date: string;
   @Type(() => Number) @IsInt() @Min(1) @Max(10) period: number;
+  /** Пән топтарға бөлінсе — қай топтың қатысуы (жоқ болса бүкіл сынып). */
+  @IsOptional() @Type(() => Number) @IsInt() groupId?: number | null;
 }
 
 export class MarkInput {

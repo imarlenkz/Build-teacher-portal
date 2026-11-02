@@ -41,8 +41,8 @@ const PERIODS: { value: Period; label: string }[] = [
 ];
 const PERIOD_WORD: Record<Period, string> = { today: 'бүгін', week: 'осы апта', month: 'осы ай', quarter: 'осы тоқсан', year: 'оқу жылы' };
 
-export const attendanceHref = (l: Pick<LessonOfDay, 'classId' | 'subjectId' | 'period'>, date: string) =>
-  `/attendance?classId=${l.classId}&subjectId=${l.subjectId}&date=${date}&period=${l.period}`;
+export const attendanceHref = (l: Pick<LessonOfDay, 'classId' | 'subjectId' | 'period' | 'groupId'>, date: string) =>
+  `/attendance?classId=${l.classId}&subjectId=${l.subjectId}&date=${date}&period=${l.period}${l.groupId ? `&groupId=${l.groupId}` : ''}`;
 
 export function useLessons(date?: string) {
   return useQuery({
@@ -167,12 +167,15 @@ function DashBody({ d, period, lessons, lessonsDate, holiday, canNat }: { d: Das
             <table className="tbl">
               <tbody>
                 {lessons.map((l) => (
-                  <tr key={`${l.period}-${l.classId}`}>
+                  <tr key={`${l.period}-${l.classId}-${l.groupId ?? 0}`}>
                     <td className="mono muted" style={{ width: 52 }}>
                       {l.startTime}
                     </td>
                     <td style={{ fontWeight: 600, width: 44 }}>{l.className}</td>
-                    <td>{l.subject}</td>
+                    <td>
+                      {l.subject}
+                      {l.groupName && <span className="muted"> · {l.groupName}</span>}
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       {l.marked ? (
                         <Link className="btn sm" to={attendanceHref(l, lessonsDate)} title={`${l.present}/${l.students} қатысты`}>
@@ -332,7 +335,7 @@ function MobileToday() {
       ) : (
         <div className="m-list">
           {ls.map((l) => (
-            <button key={`${l.period}-${l.classId}`} className="m-card" onClick={() => nav(attendanceHref(l, lessons.data!.date))}>
+            <button key={`${l.period}-${l.classId}-${l.groupId ?? 0}`} className="m-card" onClick={() => nav(attendanceHref(l, lessons.data!.date))}>
               <div style={{ width: 52 }}>
                 <div className="mono" style={{ fontWeight: 600 }}>
                   {l.startTime}
@@ -344,6 +347,7 @@ function MobileToday() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 14.5 }}>
                   {l.className} · {l.subject}
+                  {l.groupName ? ` · ${l.groupName}` : ''}
                 </div>
                 {l.marked ? (
                   <div className="c-ok" style={{ fontSize: 12.5 }}>
