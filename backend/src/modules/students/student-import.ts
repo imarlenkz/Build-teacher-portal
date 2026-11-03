@@ -45,7 +45,7 @@ export function fixCase(s: string) {
   return t.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, p: string, c: string) => p + c.toUpperCase());
 }
 
-function cellText(v: ExcelJS.CellValue): string {
+export function cellText(v: ExcelJS.CellValue): string {
   if (v === null || v === undefined) return '';
   if (v instanceof Date) return v.toISOString();
   if (typeof v === 'object') {

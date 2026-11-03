@@ -61,6 +61,7 @@ export function AppLayout() {
       label: t('navGroup.assess'),
       items: [
         { to: '/journal', label: t('nav.journal'), icon: 'book' },
+        { to: '/plan', label: t('nav.plan'), icon: 'calendar' },
         { to: '/bjb', label: t('nav.bjb'), icon: 'doc' },
         { to: '/tjb', label: t('nav.tjb'), icon: 'doc' },
         { to: '/aralyk', label: t('nav.aralyk'), icon: 'doc', show: ref.classes.some((c) => c.grade >= 2 && c.grade <= 4) },
@@ -277,7 +278,7 @@ export function AppLayout() {
   );
 }
 
-type IconName = 'home' | 'users' | 'grid' | 'check' | 'swap' | 'book' | 'doc' | 'chart' | 'file' | 'trend' | 'bell' | 'shield' | 'sliders' | 'gear';
+type IconName = 'home' | 'users' | 'grid' | 'check' | 'swap' | 'book' | 'calendar' | 'doc' | 'chart' | 'file' | 'trend' | 'bell' | 'shield' | 'sliders' | 'gear';
 const ICONS: Record<IconName, string> = {
   home: 'M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10',
   users: 'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M22 20v-2a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8',
@@ -285,6 +286,7 @@ const ICONS: Record<IconName, string> = {
   check: 'M4 4h16v16H4zM8 12l3 3 5-6',
   swap: 'M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7',
   book: 'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 19V5M8 7h8',
+  calendar: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5M8 14h3M8 17h6',
   doc: 'M14 3H6v18h12V7zM14 3v4h4M9 13h6M9 17h4',
   chart: 'M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3',
   file: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h3',
