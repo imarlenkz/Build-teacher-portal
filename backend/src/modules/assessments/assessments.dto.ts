@@ -43,6 +43,8 @@ export class ResultInput {
   @Type(() => Number) @IsInt() studentId: number;
   @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) score?: number | null;
   @IsOptional() @IsBoolean() absent?: boolean;
+  /** true — оқушының нәтижесін өшіру (журналдағы ұяшық тазартылды). */
+  @IsOptional() @IsBoolean() clear?: boolean;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CriterionScore) criteria?: CriterionScore[];
 }
 
