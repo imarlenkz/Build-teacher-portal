@@ -2100,3 +2100,25 @@ button.kpi:hover {
 .mark-input.abs-O::placeholder {
   color: var(--warn);
 }
+
+/* ───────── Күнтізбелік жоспар (КТЖ) ───────── */
+.tbl.plan tr.plan-section td {
+  background: var(--soft);
+  font-weight: 600;
+  font-size: 12.5px;
+  height: 32px;
+}
+.tbl.plan td .input,
+.tbl.plan td .textarea {
+  width: 100%;
+}
+.tbl.plan td .textarea {
+  resize: vertical;
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .tbl.plan .hide-sm,
+  .page-head .hide-sm {
+    display: none;
+  }
+}

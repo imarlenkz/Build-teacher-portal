@@ -27,6 +27,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { MovementsModule } from './modules/movements/movements.module';
 import { AssessmentsModule } from './modules/assessments/assessments.module';
 import { JournalModule } from './modules/journal/journal.module';
+import { PlanModule } from './modules/plan/plan.module';
 import { NexusModule } from './modules/nexus/nexus.module';
 import { BilimClassModule } from './modules/bilimclass/bilimclass.module';
 import { TestileuModule } from './modules/testileu/testileu.module';
@@ -76,6 +77,7 @@ import { BackupsModule } from './modules/backups/backups.module';
     MovementsModule,
     AssessmentsModule,
     JournalModule,
+    PlanModule,
     NexusModule,
     BilimClassModule,
     TestileuModule,

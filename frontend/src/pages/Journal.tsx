@@ -8,6 +8,7 @@ import { useToast } from '../lib/toast';
 import { dot, pct } from '../lib/format';
 import { computeQuarter, Journal, JournalRow, JournalYear, MARK_COLOR, PART_KK, SumCol } from '../lib/journal';
 import { useUrlState } from '../hooks';
+import { Plan, topicOn } from '../lib/plan';
 import { Badge, Card, ConfirmDialog, Empty, ErrorState, ExportMenu, Field, Modal, Segmented, Spinner } from '../components/ui';
 
 const key = (sid: number, cid: number) => `${sid}:${cid}`;
@@ -338,6 +339,9 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
             <button className="btn" onClick={() => setCol('new')}>
               + Баған (сабақ)
             </button>
+            <Link className="btn" to={`/plan?classId=${j.classId}&subjectId=${j.subjectId}${j.groupId ? `&groupId=${j.groupId}` : ''}`} title="Күнтізбелік-тақырыптық жоспар">
+              КТЖ
+            </Link>
             {j.primary ? (
               <button className="btn" onClick={() => setSumForm({ kind: 'ARALYK', initial: null })}>
                 + Аралық бағалау
@@ -606,6 +610,18 @@ function ColumnForm({ j, initial, onClose, onSaved, dirty }: { j: Journal; initi
   const [topic, setTopic] = useState(initial?.topic ?? '');
   const [del, setDel] = useState(false);
   const bad = !date || date < j.startDate || date > j.endDate;
+  // Күнтізбелік жоспар: таңдалған күнгі тақырып автоматты түрде қойылады, қалғандары тізімнен таңдалады.
+  const plan = useQuery({ queryKey: ['plan', base(j)], queryFn: () => api.get<Plan>('/plan', base(j)), staleTime: 60_000 });
+  const planned = plan.data?.lessons ?? [];
+  const [auto, setAuto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!plan.data || !date) return;
+    const t = topicOn(plan.data.lessons, date);
+    if (t && (!topic || topic === auto)) {
+      setTopic(t);
+      setAuto(t);
+    }
+  }, [plan.data, date]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = useMutation({
     mutationFn: () => (initial ? api.put(`/journal/columns/${initial.id}`, { date, topic }) : api.post('/journal/columns', { ...base(j), date, topic })),
     onSuccess: () => (toast(initial ? 'Баған өзгертілді' : 'Баған қосылды'), onSaved()),
@@ -646,8 +662,20 @@ function ColumnForm({ j, initial, onClose, onSaved, dirty }: { j: Journal; initi
             <input type="date" className="input" value={date} min={j.startDate} max={j.endDate} onChange={(e) => setDate(e.target.value)} />
           </Field>
           <Field label="Тақырып (міндетті емес)">
-            <input className="input" value={topic} maxLength={160} onChange={(e) => setTopic(e.target.value)} placeholder="Мысалы: Квадрат теңдеулер" />
+            <input className="input" value={topic} maxLength={160} onChange={(e) => setTopic(e.target.value)} placeholder="Мысалы: Квадрат теңдеулер" list={planned.length ? 'plan-topics' : undefined} />
+            {planned.length > 0 && (
+              <datalist id="plan-topics">
+                {[...new Set(planned.map((l) => l.topic.slice(0, 160)))].map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            )}
           </Field>
+          {plan.data && !planned.length && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              Тақырыптар <Link to={`/plan?classId=${j.classId}&subjectId=${j.subjectId}${j.groupId ? `&groupId=${j.groupId}` : ''}`}>күнтізбелік жоспардан</Link> автоматты түрде алынады.
+            </div>
+          )}
         </div>
       </Modal>
       <ConfirmDialog

@@ -94,18 +94,18 @@ model Role {
 }
 
 model School {
-  id        Int      @id @default(autoincrement())
-  name      String
-  shortName String   @map("short_name")
-  address   String?
-  city      String?
+  id                 Int      @id @default(autoincrement())
+  name               String
+  shortName          String   @map("short_name")
+  address            String?
+  city               String?
   /// iMARLEN ID-дағы мектеп коды (school.code, мыс. "s51") — SSO пайдаланушыларын мектепке байлау үшін.
-  idpCode   String?  @unique @map("idp_code")
-  isActive  Boolean  @default(true) @map("is_active")
+  idpCode            String?  @unique @map("idp_code")
+  isActive           Boolean  @default(true) @map("is_active")
   /// Nexus (сабақ кестесі жүйесі) мекемесінің id-і — кесте мен мұғалімдерді импорттау үшін.
-  nexusInstitutionId String? @map("nexus_institution_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  nexusInstitutionId String?  @map("nexus_institution_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   users            User[]
   teachers         Teacher[]
@@ -128,40 +128,41 @@ model School {
   quarterGrades    QuarterGrade[]
   subjectGroups    SubjectGroup[]
   externalResults  ExternalResult[]
+  planLessons      PlanLesson[]
 
   @@map("schools")
 }
 
 model User {
-  id             Int        @id @default(autoincrement())
-  schoolId       Int?       @map("school_id")
-  roleId         Int        @map("role_id")
-  login          String     @unique
+  id                Int        @id @default(autoincrement())
+  schoolId          Int?       @map("school_id")
+  roleId            Int        @map("role_id")
+  login             String     @unique
   /// iMARLEN ID (OIDC) тұрақты идентификаторы — sub. SSO арқылы кірген пайдаланушыда болады.
-  idpSub         String?    @unique @map("idp_sub")
-  passwordHash   String     @map("password_hash")
-  fullName       String     @map("full_name")
-  title          String?
-  email          String?
-  phone          String?
-  status         UserStatus @default(ACTIVE)
-  locale         String     @default("kk")
-  failedLogins   Int        @default(0) @map("failed_logins")
-  lockedUntil    DateTime?  @map("locked_until")
-  lastLoginAt    DateTime?  @map("last_login_at")
-  passwordChangedAt DateTime @default(now()) @map("password_changed_at")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
-  deletedAt      DateTime?  @map("deleted_at")
+  idpSub            String?    @unique @map("idp_sub")
+  passwordHash      String     @map("password_hash")
+  fullName          String     @map("full_name")
+  title             String?
+  email             String?
+  phone             String?
+  status            UserStatus @default(ACTIVE)
+  locale            String     @default("kk")
+  failedLogins      Int        @default(0) @map("failed_logins")
+  lockedUntil       DateTime?  @map("locked_until")
+  lastLoginAt       DateTime?  @map("last_login_at")
+  passwordChangedAt DateTime   @default(now()) @map("password_changed_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  deletedAt         DateTime?  @map("deleted_at")
 
-  school          School?          @relation(fields: [schoolId], references: [id])
-  role            Role             @relation(fields: [roleId], references: [id])
-  teacher         Teacher?
-  sessions        RefreshSession[]
-  notifications   Notification[]
-  auditLogs       AuditLog[]       @relation("AuditActor")
-  movementsMade   StudentMovement[] @relation("MovementAuthor")
-  backups         Backup[]
+  school        School?           @relation(fields: [schoolId], references: [id])
+  role          Role              @relation(fields: [roleId], references: [id])
+  teacher       Teacher?
+  sessions      RefreshSession[]
+  notifications Notification[]
+  auditLogs     AuditLog[]        @relation("AuditActor")
+  movementsMade StudentMovement[] @relation("MovementAuthor")
+  backups       Backup[]
 
   @@index([schoolId])
   @@map("users")
@@ -201,6 +202,7 @@ model Teacher {
   quarterReports QuarterReport[]
   gradeColumns   GradeColumn[]
   subjectGroups  SubjectGroup[]
+  planLessons    PlanLesson[]
 
   @@index([schoolId])
   @@map("teachers")
@@ -216,9 +218,9 @@ model SchoolYear {
   endDate   DateTime @map("end_date") @db.Date
   isCurrent Boolean  @default(false) @map("is_current")
 
-  school   School    @relation(fields: [schoolId], references: [id])
-  quarters Quarter[]
-  classes  Class[]
+  school      School               @relation(fields: [schoolId], references: [id])
+  quarters    Quarter[]
+  classes     Class[]
   assignments TeachingAssignment[]
 
   @@unique([schoolId, name])
@@ -226,11 +228,11 @@ model SchoolYear {
 }
 
 model Quarter {
-  id           Int      @id @default(autoincrement())
-  schoolYearId Int      @map("school_year_id")
-  number       Int
-  startDate    DateTime @map("start_date") @db.Date
-  endDate      DateTime @map("end_date") @db.Date
+  id            Int       @id @default(autoincrement())
+  schoolYearId  Int       @map("school_year_id")
+  number        Int
+  startDate     DateTime  @map("start_date") @db.Date
+  endDate       DateTime  @map("end_date") @db.Date
   reportDueDate DateTime? @map("report_due_date") @db.Date
 
   schoolYear     SchoolYear      @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
@@ -238,6 +240,7 @@ model Quarter {
   quarterReports QuarterReport[]
   gradeColumns   GradeColumn[]
   quarterGrades  QuarterGrade[]
+  planLessons    PlanLesson[]
 
   @@unique([schoolYearId, number])
   @@map("quarters")
@@ -266,14 +269,15 @@ model Class {
   gradeColumns    GradeColumn[]
   quarterGrades   QuarterGrade[]
   subjectGroups   SubjectGroup[]
+  planLessons     PlanLesson[]
 
   @@unique([schoolId, schoolYearId, name])
   @@map("classes")
 }
 
 model Subject {
-  id        Int    @id @default(autoincrement())
-  schoolId  Int    @map("school_id")
+  id        Int     @id @default(autoincrement())
+  schoolId  Int     @map("school_id")
   name      String
   shortName String? @map("short_name")
 
@@ -285,6 +289,7 @@ model Subject {
   gradeColumns   GradeColumn[]
   quarterGrades  QuarterGrade[]
   subjectGroups  SubjectGroup[]
+  planLessons    PlanLesson[]
 
   @@unique([schoolId, name])
   @@map("subjects")
@@ -368,9 +373,9 @@ model Student {
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
 
-  school            School                @relation(fields: [schoolId], references: [id])
-  class             Class?                @relation(fields: [classId], references: [id], onDelete: SetNull)
-  nationality       Nationality?          @relation(fields: [nationalityId], references: [id])
+  school            School               @relation(fields: [schoolId], references: [id])
+  class             Class?               @relation(fields: [classId], references: [id], onDelete: SetNull)
+  nationality       Nationality?         @relation(fields: [nationalityId], references: [id])
   movements         StudentMovement[]
   attendance        Attendance[]
   assessmentResults AssessmentResult[]
@@ -500,14 +505,14 @@ model Assessment {
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
-  school    School                @relation(fields: [schoolId], references: [id])
-  class     Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
-  subject   Subject               @relation(fields: [subjectId], references: [id])
-  quarter   Quarter               @relation(fields: [quarterId], references: [id])
-  teacher   Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
-  group     SubjectGroup?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  criteria  AssessmentCriterion[]
-  results   AssessmentResult[]
+  school   School                @relation(fields: [schoolId], references: [id])
+  class    Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject  Subject               @relation(fields: [subjectId], references: [id])
+  quarter  Quarter               @relation(fields: [quarterId], references: [id])
+  teacher  Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  group    SubjectGroup?         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  criteria AssessmentCriterion[]
+  results  AssessmentResult[]
 
   @@index([schoolId, type, quarterId])
   @@index([classId, subjectId, quarterId])
@@ -565,14 +570,14 @@ model AssessmentCriterionResult {
 
 /// Пән бойынша сыныпты топтарға бөлу (мысалы, ағылшын тілі: 1-топ, 2-топ). Әр топтың өз мұғалімі болады.
 model SubjectGroup {
-  id           Int      @id @default(autoincrement())
-  schoolId     Int      @map("school_id")
-  classId      Int      @map("class_id")
-  subjectId    Int      @map("subject_id")
-  name         String
-  teacherId    Int?     @map("teacher_id")
-  order        Int      @default(0)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id        Int      @id @default(autoincrement())
+  schoolId  Int      @map("school_id")
+  classId   Int      @map("class_id")
+  subjectId Int      @map("subject_id")
+  name      String
+  teacherId Int?     @map("teacher_id")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
 
   school       School               @relation(fields: [schoolId], references: [id])
   class        Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -581,6 +586,7 @@ model SubjectGroup {
   members      SubjectGroupMember[]
   gradeColumns GradeColumn[]
   assessments  Assessment[]
+  planLessons  PlanLesson[]
 
   @@unique([classId, subjectId, name])
   @@index([teacherId])
@@ -617,10 +623,10 @@ model GradeColumn {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school  School   @relation(fields: [schoolId], references: [id])
-  class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
-  subject Subject  @relation(fields: [subjectId], references: [id])
-  quarter Quarter  @relation(fields: [quarterId], references: [id])
+  school  School        @relation(fields: [schoolId], references: [id])
+  class   Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject       @relation(fields: [subjectId], references: [id])
+  quarter Quarter       @relation(fields: [quarterId], references: [id])
   teacher Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   group   SubjectGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
   grades  Grade[]
@@ -673,6 +679,40 @@ model QuarterGrade {
   @@map("quarter_grades")
 }
 
+/// Күнтізбелік-тақырыптық жоспар (КТЖ): тоқсандағы сабақтар тізімі — тақырып, оқу мақсаттары, сағат, жоспарланған күн.
+/// Журнал бағанымен күні арқылы байланысады.
+model PlanLesson {
+  id         Int       @id @default(autoincrement())
+  schoolId   Int       @map("school_id")
+  classId    Int       @map("class_id")
+  subjectId  Int       @map("subject_id")
+  quarterId  Int       @map("quarter_id")
+  groupId    Int?      @map("group_id")
+  teacherId  Int?      @map("teacher_id")
+  order      Int
+  /// Бөлім / ортақ тақырып.
+  section    String?
+  topic      String
+  /// Оқу мақсаттары (мыс. «7.1.2.1 ...»).
+  objectives String?
+  hours      Int       @default(1)
+  date       DateTime? @db.Date
+  notes      String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  school  School        @relation(fields: [schoolId], references: [id])
+  class   Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject       @relation(fields: [subjectId], references: [id])
+  quarter Quarter       @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  group   SubjectGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  teacher Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@index([classId, subjectId, quarterId])
+  @@index([schoolId])
+  @@map("plan_lessons")
+}
+
 // ───────────────────────── Settings ─────────────────────────
 
 /// Деңгей диапазондары — hardcode емес, мектеп әкімшілігі баптайды.
@@ -691,15 +731,15 @@ model LevelRange {
 }
 
 model SchoolSettings {
-  schoolId            Int     @id @map("school_id")
-  attendanceThreshold Int     @default(80) @map("attendance_threshold")
+  schoolId            Int      @id @map("school_id")
+  attendanceThreshold Int      @default(80) @map("attendance_threshold")
   /// Тоқсандық баға салмақтары (%): ағымдағы бағалау (ФО), БЖБ, ТЖБ.
-  foWeight            Int     @default(25) @map("fo_weight")
-  bjbWeight           Int     @default(25) @map("bjb_weight")
-  tjbWeight           Int     @default(50) @map("tjb_weight")
+  foWeight            Int      @default(25) @map("fo_weight")
+  bjbWeight           Int      @default(25) @map("bjb_weight")
+  tjbWeight           Int      @default(50) @map("tjb_weight")
   /// 2–4 сыныптар (аралық бағалау): ФО және аралық бағалау салмақтары (%).
-  primaryFoWeight     Int     @default(50) @map("primary_fo_weight")
-  interimWeight       Int     @default(50) @map("interim_weight")
+  primaryFoWeight     Int      @default(50) @map("primary_fo_weight")
+  interimWeight       Int      @default(50) @map("interim_weight")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
