@@ -78,7 +78,7 @@ export class JournalService {
     const where = group ? { ...base, OR: [{ groupId: group.id }, { groupId: null }] } : base;
     const [columns, assessments, finals, lv, w, canWrite] = await Promise.all([
       this.prisma.gradeColumn.findMany({ where, include: { grades: true }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
-      this.prisma.assessment.findMany({ where, include: { results: true }, orderBy: [{ type: 'asc' }, { date: 'asc' }, { createdAt: 'asc' }] }),
+      this.prisma.assessment.findMany({ where, include: { results: true, _count: { select: { criteria: true } } }, orderBy: [{ type: 'asc' }, { date: 'asc' }, { createdAt: 'asc' }] }),
       this.prisma.quarterGrade.findMany({ where: base }),
       this.levels.get(user.schoolId),
       this.weights(user.schoolId, cls.grade),
@@ -151,9 +151,9 @@ export class JournalService {
       weights: w,
       levels: lv,
       columns: columns.map((c) => ({ id: c.id, date: fmtDate(c.date)!, topic: c.topic })),
-      bjb: bjb.map((a) => ({ id: a.id, title: a.title, maxScore: Number(a.maxScore) })),
-      tjb: tjb ? { id: tjb.id, title: tjb.title, maxScore: Number(tjb.maxScore) } : null,
-      interim: interim.map((a) => ({ id: a.id, title: a.title, maxScore: Number(a.maxScore) })),
+      bjb: bjb.map((a) => ({ id: a.id, title: a.title, maxScore: Number(a.maxScore), criteria: a._count.criteria, groupId: a.groupId, date: fmtDate(a.date) })),
+      tjb: tjb ? { id: tjb.id, title: tjb.title, maxScore: Number(tjb.maxScore), criteria: tjb._count.criteria, groupId: tjb.groupId, date: fmtDate(tjb.date) } : null,
+      interim: interim.map((a) => ({ id: a.id, title: a.title, maxScore: Number(a.maxScore), criteria: a._count.criteria, groupId: a.groupId, date: fmtDate(a.date) })),
       rows,
       finalsCount: finals.length,
     };

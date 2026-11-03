@@ -36,6 +36,16 @@ export interface JournalRow {
   final: { mark: number; computedPct: number | null; updatedAt: string } | null;
 }
 
+/** БЖБ / ТЖБ / аралық бағалау бағаны. criteria > 0 болса, балл тек «Бағалау» бетінде критерий бойынша енгізіледі. */
+export interface SumCol {
+  id: number;
+  title: string;
+  maxScore: number;
+  criteria: number;
+  groupId: number | null;
+  date: string | null;
+}
+
 export interface Journal {
   classId: number;
   className: string;
@@ -51,11 +61,11 @@ export interface Journal {
   weights: Weights;
   levels: Level[];
   columns: { id: number; date: string; topic: string | null }[];
-  bjb: { id: number; title: string; maxScore: number }[];
-  tjb: { id: number; title: string; maxScore: number } | null;
+  bjb: SumCol[];
+  tjb: SumCol | null;
   /** 2–4 сынып: БЖБ/ТЖБ орнына аралық бағалау. */
   primary: boolean;
-  interim: { id: number; title: string; maxScore: number }[];
+  interim: SumCol[];
   rows: JournalRow[];
   finalsCount: number;
 }

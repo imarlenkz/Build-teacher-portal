@@ -6,12 +6,36 @@ import { PERM, useAuth } from '../lib/auth';
 import { useReference } from '../lib/reference';
 import { useToast } from '../lib/toast';
 import { dot, pct } from '../lib/format';
-import { computeQuarter, Journal, JournalYear, MARK_COLOR, PART_KK } from '../lib/journal';
+import { computeQuarter, Journal, JournalRow, JournalYear, MARK_COLOR, PART_KK, SumCol } from '../lib/journal';
 import { useUrlState } from '../hooks';
 import { Badge, Card, ConfirmDialog, Empty, ErrorState, ExportMenu, Field, Modal, Segmented, Spinner } from '../components/ui';
 
 const key = (sid: number, cid: number) => `${sid}:${cid}`;
 const MARKS = [2, 3, 4, 5];
+const ABSENT = 'ж';
+
+type SumKind = 'BJB' | 'TJB' | 'ARALYK';
+type ScoreCell = JournalRow['tjb'];
+/** Журналдағы жиынтық бағалау бағаны (БЖБ / аралық / ТЖБ). */
+type SumEntry = { a: SumCol; kind: SumKind; label: string; cell: (r: JournalRow) => ScoreCell };
+const KIND_PATH: Record<SumKind, string> = { BJB: '/bjb', TJB: '/tjb', ARALYK: '/aralyk' };
+const KIND_KK: Record<SumKind, string> = { BJB: 'БЖБ', TJB: 'ТЖБ', ARALYK: 'Аралық бағалау' };
+
+function sumsOf(j: Journal): SumEntry[] {
+  return [
+    ...j.bjb.map((a, i): SumEntry => ({ a, kind: 'BJB', label: `БЖБ ${i + 1}`, cell: (r) => r.bjb[i] })),
+    ...j.interim.map((a, i): SumEntry => ({ a, kind: 'ARALYK', label: `Аралық${j.interim.length > 1 ? ` ${i + 1}` : ''}`, cell: (r) => r.interim[i] })),
+    ...(j.tjb ? [{ a: j.tjb, kind: 'TJB' as const, label: 'ТЖБ', cell: (r: JournalRow) => r.tjb }] : []),
+  ];
+}
+const skey = (aid: number, sid: number) => `${aid}:${sid}`;
+/** Ұяшық мәні: '' — енгізілмеген, 'ж' — қатыспады, әйтпесе балл. */
+const parseScore = (v: string): { empty: true } | { absent: true } | { score: number } | null => {
+  if (v === '') return { empty: true };
+  if (v === ABSENT) return { absent: true };
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? { score: n } : null;
+};
 
 export default function JournalPage() {
   const { ref, quarterId, setQuarterId, year, subjectsOf, groupsOf } = useReference();
@@ -134,12 +158,29 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
   const [marks, setMarks] = useState(initMarks);
   const [finals, setFinals] = useState(initFinals);
   const [col, setCol] = useState<Journal['columns'][number] | 'new' | null>(null);
+  const [sumForm, setSumForm] = useState<{ kind: SumKind; initial: SumCol | null } | null>(null);
+  const sums = useMemo(() => sumsOf(j), [j]);
+  const initScores = () => {
+    const m: Record<string, string> = {};
+    j.rows.forEach((r) =>
+      sums.forEach((sc) => {
+        const c = sc.cell(r);
+        m[skey(sc.a.id, r.studentId)] = c == null ? '' : c.absent ? ABSENT : String(c.score);
+      }),
+    );
+    return m;
+  };
+  const [scores, setScores] = useState(initScores);
+  const origScores = useMemo(initScores, [j]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Сервердегі деректер жаңарса (сақтаудан кейін), жаңа баған қосылса — бос ұяшықтарды толтырамыз.
+  useEffect(() => setScores((cur) => ({ ...origScores, ...Object.fromEntries(Object.entries(cur).filter(([k]) => k in origScores)) })), [origScores]);
 
   const origMarks = useMemo(initMarks, [j]); // eslint-disable-line react-hooks/exhaustive-deps
   const origFinals = useMemo(initFinals, [j]); // eslint-disable-line react-hooks/exhaustive-deps
   const markChanges = Object.keys(marks).filter((k) => marks[k] !== origMarks[k]);
   const finalChanges = j.rows.filter((r) => finals[r.studentId] !== origFinals[r.studentId]);
-  const dirty = markChanges.length > 0 || finalChanges.length > 0;
+  const scoreChanges = Object.keys(scores).filter((k) => scores[k] !== (origScores[k] ?? ''));
+  const dirty = markChanges.length > 0 || finalChanges.length > 0 || scoreChanges.length > 0;
 
   useEffect(() => {
     if (!dirty) return;
@@ -153,14 +194,40 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
     () =>
       j.rows.map((r) => {
         const fo = j.columns.map((c) => Number(marks[key(r.studentId, c.id)])).filter((v) => v >= 1);
-        return computeQuarter(fo, r.computed.bjbPct, r.computed.tjbPct, j.weights, j.levels, r.computed.interimPct);
+        // БЖБ/аралық: балдар қосындысы / максимумдар қосындысы (сервердегідей); қатыспаған жұмыс есепке кірмейді.
+        const agg = (kind: SumKind) => {
+          let got = 0;
+          let max = 0;
+          for (const sc of sums) {
+            if (sc.kind !== kind) continue;
+            const p = parseScore(scores[skey(sc.a.id, r.studentId)] ?? '');
+            if (p && 'score' in p) {
+              got += Math.min(p.score, sc.a.maxScore);
+              max += sc.a.maxScore;
+            }
+          }
+          return max > 0 ? (got / max) * 100 : null;
+        };
+        return computeQuarter(fo, agg('BJB'), agg('TJB'), j.weights, j.levels, agg('ARALYK'));
       }),
-    [j, marks],
+    [j, marks, scores, sums],
   );
 
   const save = useMutation({
     mutationFn: async () => {
       let res: Journal | null = null;
+      // БЖБ/ТЖБ балдары — «Бағалау» беттеріндегі деректермен бірдей (assessment results).
+      const byAssessment = new Map<number, unknown[]>();
+      for (const k of scoreChanges) {
+        const [aid, studentId] = k.split(':').map(Number);
+        const sc = sums.find((x) => x.a.id === aid)!;
+        const p = parseScore(scores[k]);
+        if (!p) throw new ApiError(400, `${sc.label}: балл дұрыс емес`);
+        if ('score' in p && p.score > sc.a.maxScore) throw new ApiError(400, `${sc.label}: балл ${sc.a.maxScore}-дан аспауы керек`);
+        const item = 'empty' in p ? { studentId, clear: true } : 'absent' in p ? { studentId, absent: true } : { studentId, score: p.score };
+        byAssessment.set(aid, [...(byAssessment.get(aid) ?? []), item]);
+      }
+      for (const [aid, results] of byAssessment) await api.put(`/assessments/${aid}/results`, { results });
       if (markChanges.length) {
         res = await api.put<Journal>('/journal/marks', {
           ...base(j),
@@ -176,7 +243,9 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
       return res;
     },
     onSuccess: (x) => {
-      if (x) qc.setQueryData(['journal', base(j)], x);
+      if (scoreChanges.length) qc.invalidateQueries({ queryKey: ['journal', base(j)] });
+      else if (x) qc.setQueryData(['journal', base(j)], x);
+      if (scoreChanges.length) qc.invalidateQueries({ queryKey: ['assessments'] });
       qc.invalidateQueries({ queryKey: ['journal-year'] });
       toast('Журнал сақталды');
     },
@@ -190,6 +259,18 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
     const clean = v.replace(/[^0-9]/g, '').slice(0, 2);
     const n = Number(clean);
     setMarks((m) => ({ ...m, [key(sid, cid)]: clean === '' ? '' : n > 10 ? '10' : n < 1 ? '' : String(n) }));
+  };
+
+  const setScore = (aid: number, sid: number, v: string, max: number) => {
+    let clean: string;
+    if (/^[жЖ-]/.test(v.trim())) clean = ABSENT;
+    else {
+      clean = v.replace(',', '.').replace(/[^0-9.]/g, '');
+      const [a, ...b] = clean.split('.');
+      clean = b.length ? `${a}.${b.join('').slice(0, 2)}` : a;
+      if (Number(clean) > max) clean = String(max);
+    }
+    setScores((m) => ({ ...m, [skey(aid, sid)]: clean }));
   };
 
   const fillComputed = () => {
@@ -255,6 +336,22 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
             <button className="btn" onClick={() => setCol('new')}>
               + Баған (сабақ)
             </button>
+            {j.primary ? (
+              <button className="btn" onClick={() => setSumForm({ kind: 'ARALYK', initial: null })}>
+                + Аралық бағалау
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={() => setSumForm({ kind: 'BJB', initial: null })}>
+                  + БЖБ
+                </button>
+                {!j.tjb && (
+                  <button className="btn" onClick={() => setSumForm({ kind: 'TJB', initial: null })}>
+                    + ТЖБ
+                  </button>
+                )}
+              </>
+            )}
             <button className="btn" onClick={fillComputed} title="Бос қорытынды бағаларды есептелген бағамен толтыру">
               Есептелген бағаны қою
             </button>
@@ -287,24 +384,22 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                 <th className="num sep" title="Ағымдағы бағалардың орташасы (10 балдық)">
                   ФО
                 </th>
-                {j.bjb.map((b, i) => (
-                  <th key={b.id} className="num" title={`${b.title} · /${b.maxScore}`}>
-                    БЖБ {i + 1}
-                    <div className="col-topic">/{b.maxScore}</div>
+                {sums.map((sc, si) => (
+                  <th key={sc.a.id} className={`center score-col ${si === 0 ? 'sep' : ''}`} title={`${sc.a.title} · макс. ${sc.a.maxScore} балл${sc.a.criteria ? ' · критерий бойынша' : ''}`}>
+                    {sc.a.criteria ? (
+                      <Link className="linklike" to={`${KIND_PATH[sc.kind]}?classId=${j.classId}&subjectId=${j.subjectId}${j.groupId ? `&groupId=${j.groupId}` : ''}&id=${sc.a.id}`}>
+                        {sc.label}
+                      </Link>
+                    ) : canWrite ? (
+                      <button className="linklike" onClick={() => setSumForm({ kind: sc.kind, initial: sc.a })} aria-label={`${sc.label} баптауын өзгерту`}>
+                        {sc.label}
+                      </button>
+                    ) : (
+                      sc.label
+                    )}
+                    <div className="col-topic">/{sc.a.maxScore}</div>
                   </th>
                 ))}
-                {j.interim.map((b, i) => (
-                  <th key={b.id} className="num" title={`${b.title} · /${b.maxScore}`}>
-                    Аралық{j.interim.length > 1 ? ` ${i + 1}` : ''}
-                    <div className="col-topic">/{b.maxScore}</div>
-                  </th>
-                ))}
-                {j.tjb && (
-                  <th className="num" title={`${j.tjb.title} · /${j.tjb.maxScore}`}>
-                    ТЖБ
-                    <div className="col-topic">/{j.tjb.maxScore}</div>
-                  </th>
-                )}
                 <th className="num sep" title="Салмақталған тоқсандық пайыз">
                   Тоқсан %
                 </th>
@@ -357,21 +452,36 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                     <td className="num sep" title={c.foPct != null ? pct(c.foPct) : undefined}>
                       {c.foPct != null ? (c.foPct / 10).toFixed(1) : '—'}
                     </td>
-                    {r.bjb.map((b, bi) => (
-                      <td key={bi} className="num" title={b?.pct != null ? pct(b.pct) : undefined}>
-                        {b == null ? <span className="muted">—</span> : b.absent ? <span className="muted">жоқ</span> : b.score}
-                      </td>
-                    ))}
-                    {r.interim.map((b, bi) => (
-                      <td key={`i${bi}`} className="num" title={b?.pct != null ? pct(b.pct) : undefined}>
-                        {b == null ? <span className="muted">—</span> : b.absent ? <span className="muted">жоқ</span> : b.score}
-                      </td>
-                    ))}
-                    {j.tjb && (
-                      <td className="num" title={r.tjb?.pct != null ? pct(r.tjb.pct) : undefined}>
-                        {r.tjb == null ? <span className="muted">—</span> : r.tjb.absent ? <span className="muted">жоқ</span> : r.tjb.score}
-                      </td>
-                    )}
+                    {sums.map((sc, si) => {
+                      const k = skey(sc.a.id, r.studentId);
+                      const v = scores[k] ?? '';
+                      const p = parseScore(v);
+                      const title = p && 'score' in p ? `${pct((Math.min(p.score, sc.a.maxScore) / sc.a.maxScore) * 100)} · ${sc.a.title}` : sc.a.title;
+                      if (sc.a.criteria) {
+                        return (
+                          <td key={sc.a.id} className={`center score-col ${si === 0 ? 'sep' : ''}`} title={`${title} · критерий бойынша «${KIND_KK[sc.kind]}» бетінде енгізіледі`}>
+                            {v === '' ? <span className="muted">—</span> : v === ABSENT ? <span className="muted">жоқ</span> : <span className="mono">{v}</span>}
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={sc.a.id} className={`center score-col ${si === 0 ? 'sep' : ''} ${v !== (origScores[k] ?? '') ? 'changed' : ''}`} title={title}>
+                          <input
+                            className={`input mono score-input ${v === ABSENT ? 'absent' : ''}`}
+                            inputMode="decimal"
+                            value={v}
+                            disabled={!canWrite}
+                            data-row={i}
+                            data-col={j.columns.length + si}
+                            onKeyDown={onKey}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onChange={(e) => setScore(sc.a.id, r.studentId, e.target.value, sc.a.maxScore)}
+                            onBlur={() => v !== '' && v !== ABSENT && setScores((m) => ({ ...m, [k]: String(Number(v)) }))}
+                            aria-label={`${r.fullName}, ${sc.label} (макс. ${sc.a.maxScore})`}
+                          />
+                        </td>
+                      );
+                    })}
                     <td className="num sep" title={c.missing.length ? `Есепке кірмеді: ${c.missing.map((m) => PART_KK[m]).join(', ')}` : undefined}>
                       {pct(c.pct)}
                       {c.pct != null && c.missing.length > 0 && <span className="c-warn"> *</span>}
@@ -408,7 +518,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
               })}
               {!j.rows.length && (
                 <tr>
-                  <td colSpan={7 + j.columns.length + j.bjb.length + j.interim.length}>
+                  <td colSpan={6 + Math.max(1, j.columns.length) + sums.length}>
                     <Empty>Сыныпта белсенді оқушы жоқ</Empty>
                   </td>
                 </tr>
@@ -429,6 +539,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                   onClick={() => {
                     setMarks(origMarks);
                     setFinals(origFinals);
+                    setScores(origScores);
                   }}
                 >
                   Болдырмау
@@ -442,8 +553,23 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
         </div>
       </div>
       <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-        Ағымдағы баға 1–10 балл. Тоқсан % = {j.primary ? `ФО% × ${w.fo}% + аралық бағалау% × ${w.interim ?? 0}%` : `ФО% × ${w.fo}% + БЖБ% × ${w.bjb}% + ТЖБ% × ${w.tjb}%`}; деректері жоқ бөлік (*) есептен шығып, қалғандарының салмағы пропорционалды артады. Баға: {lv.length === 4 ? lv.map((l, i) => `${l.fromPct}–${l.toPct}% → ${i + 2}`).join(', ') : '85%+ → 5, 65% → 4, 40% → 3, одан төмен → 2'}. {j.primary ? 'Аралық бағалау' : 'БЖБ/ТЖБ'} балдары «Бағалау» бетінде енгізіледі. Enter / ↑↓←→ — жылжу.
+        Ағымдағы баға 1–10 балл. Тоқсан % = {j.primary ? `ФО% × ${w.fo}% + аралық бағалау% × ${w.interim ?? 0}%` : `ФО% × ${w.fo}% + БЖБ% × ${w.bjb}% + ТЖБ% × ${w.tjb}%`}; деректері жоқ бөлік (*) есептен шығып, қалғандарының салмағы пропорционалды артады. Баға: {lv.length === 4 ? lv.map((l, i) => `${l.fromPct}–${l.toPct}% → ${i + 2}`).join(', ') : '85%+ → 5, 65% → 4, 40% → 3, одан төмен → 2'}. {j.primary ? 'Аралық бағалау' : 'БЖБ/ТЖБ'} балын осы кестеде тікелей енгізуге болады (жұмысқа қатыспаса — «ж»); критерий бойынша құрылған жұмыстар «Бағалау» бетінде толтырылады. Enter / ↑↓←→ — жылжу.
       </div>
+
+      {sumForm && (
+        <SumForm
+          j={j}
+          kind={sumForm.kind}
+          initial={sumForm.initial}
+          dirty={dirty}
+          onClose={() => setSumForm(null)}
+          onSaved={() => {
+            setSumForm(null);
+            qc.invalidateQueries({ queryKey: ['journal', base(j)] });
+            qc.invalidateQueries({ queryKey: ['assessments'] });
+          }}
+        />
+      )}
 
       {col && (
         <ColumnForm
@@ -523,6 +649,88 @@ function ColumnForm({ j, initial, onClose, onSaved, dirty }: { j: Journal; initi
         text={
           <>
             {initial && dot(initial.date)} бағаны және оған қойылған <b>{filled}</b> баға жойылады. Бұл әрекет аудит журналына жазылады.
+          </>
+        }
+        confirmLabel="Жою"
+        busy={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onClose={() => setDel(false)}
+      />
+    </>
+  );
+}
+
+/** Журналдан БЖБ / ТЖБ / аралық бағалау құру және өзгерту (критерийсіз, тек жалпы балл). */
+function SumForm({ j, kind, initial, onClose, onSaved, dirty }: { j: Journal; kind: SumKind; initial: SumCol | null; onClose: () => void; onSaved: () => void; dirty: boolean }) {
+  const toast = useToast();
+  const defTitle = kind === 'TJB' ? `${j.quarter}-тоқсан ТЖБ` : kind === 'BJB' ? `БЖБ ${j.bjb.length + 1}` : `Аралық бағалау ${j.interim.length + 1}`;
+  const [title, setTitle] = useState(initial?.title ?? defTitle);
+  const [max, setMax] = useState(initial ? String(initial.maxScore) : '');
+  const [date, setDate] = useState(initial?.date ?? '');
+  const [del, setDel] = useState(false);
+  const maxN = Number(max);
+  const badMax = !max || !Number.isFinite(maxN) || maxN < 1 || maxN > 200;
+  const badDate = !!date && (date < j.startDate || date > j.endDate);
+  const filled = initial ? j.rows.filter((r) => sumsOf(j).find((x) => x.a.id === initial.id)?.cell(r) != null).length : 0;
+  const body = { type: kind, classId: j.classId, subjectId: j.subjectId, quarterId: j.quarterId, groupId: initial ? initial.groupId : j.groupId, title: title.trim(), maxScore: maxN, date: date || null };
+  const save = useMutation({
+    mutationFn: () => (initial ? api.put(`/assessments/${initial.id}`, { ...body, criteria: [] }) : api.post('/assessments', body)),
+    onSuccess: () => (toast(initial ? `${KIND_KK[kind]} өзгертілді` : `${KIND_KK[kind]} қосылды`), onSaved()),
+    onError: (e) => toast((e as Error).message, 'error'),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del(`/assessments/${initial!.id}`),
+    onSuccess: () => (toast(`${KIND_KK[kind]} жойылды`), onSaved()),
+    onError: (e) => toast((e as Error).message, 'error'),
+  });
+  return (
+    <>
+      <Modal
+        open={!del}
+        title={initial ? `${KIND_KK[kind]}: баптау` : `Жаңа ${KIND_KK[kind]}`}
+        onClose={onClose}
+        size="sm"
+        footer={
+          <>
+            {initial && (
+              <button className="btn ghost c-bad" onClick={() => setDel(true)} style={{ marginRight: 'auto' }}>
+                Жою
+              </button>
+            )}
+            <button className="btn" onClick={onClose}>
+              Болдырмау
+            </button>
+            <button className="btn primary" disabled={badMax || badDate || title.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>
+              {save.isPending && <Spinner />} Сақтау
+            </button>
+          </>
+        }
+      >
+        <div className="stack">
+          {dirty && <div className="c-warn" style={{ fontSize: 13 }}>Сақталмаған бағалар бар: алдымен «Сақтау» басыңыз, әйтпесе олар жоғалады.</div>}
+          <Field label="Атауы">
+            <input className="input" value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} />
+          </Field>
+          <Field label="Максималды балл" error={max && badMax ? '1–200 аралығында' : initial && filled ? 'Нәтижелер енгізілген: максималды балды өзгертуге болмайды' : null}>
+            <input className="input mono" inputMode="decimal" value={max} disabled={!!initial && filled > 0} onChange={(e) => setMax(e.target.value.replace(',', '.').replace(/[^0-9.]/g, ''))} placeholder="Мысалы: 20" autoFocus={!initial} />
+          </Field>
+          <Field label="Күні (міндетті емес)" error={badDate ? `${dot(j.startDate)} – ${dot(j.endDate)} аралығында` : null}>
+            <input type="date" className="input" value={date} min={j.startDate} max={j.endDate} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          {!initial && kind !== 'BJB' && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              Критерий бойынша талдау керек болса, жұмысты «{KIND_KK[kind]}» бетінде критерийлерімен құрыңыз.
+            </div>
+          )}
+        </div>
+      </Modal>
+      <ConfirmDialog
+        open={del}
+        danger
+        title={`${KIND_KK[kind]} жою`}
+        text={
+          <>
+            «{initial?.title}» және оған енгізілген <b>{filled}</b> нәтиже жойылады. Бұл әрекет аудит журналына жазылады.
           </>
         }
         confirmLabel="Жою"

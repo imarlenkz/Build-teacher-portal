@@ -2067,3 +2067,17 @@ button.kpi:hover {
   background: var(--panel);
   font-size: 13px;
 }
+.tbl.journal .score-col {
+  width: 56px;
+  min-width: 56px;
+}
+.score-input {
+  width: 48px;
+  height: 28px;
+  text-align: center;
+  padding: 0 2px;
+}
+.tbl.journal .score-input.absent {
+  color: var(--muted);
+  font-style: italic;
+}

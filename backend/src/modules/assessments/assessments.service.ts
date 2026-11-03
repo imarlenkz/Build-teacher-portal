@@ -266,7 +266,8 @@ export class AssessmentsService {
     const allowedStudents = new Set(
       (await this.prisma.student.findMany({ where: { OR: [this.rosterWhere(a), { assessmentResults: { some: { assessmentId: id } } }], deletedAt: null }, select: { id: true } })).map((s) => s.id),
     );
-    const prepared = dto.results.map((r) => {
+    const cleared = dto.results.filter((r) => r.clear).map((r) => r.studentId);
+    const prepared = dto.results.filter((r) => !r.clear).map((r) => {
       if (!allowedStudents.has(r.studentId)) throw new BadRequestException('Тізімде басқа сыныптың оқушысы бар');
       if (r.absent) return { ...r, total: 0, crit: [] as { criterionId: number; score: number }[] };
       let total: number;
@@ -291,6 +292,13 @@ export class AssessmentsService {
     const before = await this.prisma.assessmentResult.findMany({ where: { assessmentId: id } });
     const changed: string[] = [];
     await this.prisma.$transaction(async (tx) => {
+      if (cleared.length) {
+        for (const sid of cleared) {
+          const prev = before.find((b) => b.studentId === sid);
+          if (prev) changed.push(`${sid}: ${prev.absent ? 'жоқ' : Number(prev.score)}→—`);
+        }
+        await tx.assessmentResult.deleteMany({ where: { assessmentId: id, studentId: { in: cleared } } });
+      }
       for (const r of prepared) {
         const pct = r.absent ? 0 : (r.total / max) * 100;
         const prev = before.find((b) => b.studentId === r.studentId);
@@ -313,7 +321,7 @@ export class AssessmentsService {
           entityId: id,
           summary: `${a.class.name} · ${a.subject.name} · ${a.title}`,
           before: before.length ? `${before.length} оқушы${changed.length ? ` (${changed.length} өзгерді)` : ''}` : '—',
-          after: `${prepared.length} оқушы`,
+          after: `${prepared.length} оқушы${cleared.length ? `, ${cleared.length} өшірілді` : ''}`,
         },
         meta,
         tx,
