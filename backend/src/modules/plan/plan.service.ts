@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { fmtDate, fmtDot, todayStr, toDate } from '../../common/utils/dates';
 import { CopyPlanInput, PlanImportInput, PlanLessonInput, PlanQuery, PlanToJournalInput, SavePlanInput } from './plan.dto';
 import { parsePlanWorkbook, PlanRow } from './plan-import';
+import { fillDates, slotDates } from './plan-dates';
 
 type Quarter = { id: number; number: number; startDate: Date; endDate: Date };
 type LessonData = { section: string | null; topic: string; objectives: string | null; hours: number; date: string | null; notes: string | null };
@@ -178,8 +179,9 @@ export class PlanService {
       date: l.date ?? null,
       notes: l.notes ?? null,
     }));
-    const empty = lessons.findIndex((l) => !l.topic);
-    if (empty >= 0) throw new BadRequestException(`${empty + 1}-сабақтың тақырыбы бос`);
+    // Тақырыбы әлі жазылмаған, бірақ күні бар сабақ сақтала береді (кесте бойынша жасалған жоспар).
+    const empty = lessons.findIndex((l) => !l.topic && !l.date);
+    if (empty >= 0) throw new BadRequestException(`${empty + 1}-сабақтың тақырыбы да, күні де бос`);
     this.check(lessons, quarter);
     const before = await this.prisma.planLesson.count({ where: this.where(dto, group?.id ?? null) });
     await this.prisma.$transaction(async (tx) => {
@@ -217,13 +219,20 @@ export class PlanService {
       buckets.set(qn, [...(buckets.get(qn) ?? []), r]);
     }
     const gid = group?.id ?? null;
+    const weekdays = await this.slots(dto.classId, dto.subjectId, year.id);
+    let autoDated = 0;
     const existing = await this.prisma.planLesson.groupBy({ by: ['quarterId'], where: { classId: dto.classId, subjectId: dto.subjectId, groupId: gid }, _count: true });
     const plan = [...buckets.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([qn, list]) => {
         const qq = year.quarters.find((x) => x.number === qn)!;
-        const lessons: LessonData[] = list.map((r) => ({ section: r.section, topic: r.topic, objectives: r.objectives, hours: r.hours, date: r.date, notes: r.notes }));
+        let lessons: LessonData[] = list.map((r) => ({ section: r.section, topic: r.topic, objectives: r.objectives, hours: r.hours, date: r.date, notes: r.notes }));
         this.check(lessons, qq, warnings, list.map((r) => r.row));
+        // Файлда күндер жоқ болса — сабақ кестесі бойынша автоматты қоямыз.
+        if (weekdays.length && !lessons.some((l) => l.date)) {
+          lessons = fillDates(lessons, slotDates(fmtDate(qq.startDate)!, fmtDate(qq.endDate)!, weekdays));
+          autoDated += lessons.filter((l) => l.date).length;
+        }
         if (lessons.length > 300) errors.push({ row: 0, message: `${qn}-тоқсанда ${lessons.length} сабақ — 300-ден аспауы керек` });
         return { quarter: qq, lessons, existing: existing.find((e) => e.quarterId === qq.id)?._count ?? 0 };
       });
@@ -232,7 +241,8 @@ export class PlanService {
       split,
       total: rows.length,
       hours: rows.reduce((a, r) => a + r.hours, 0),
-      dated: rows.filter((r) => r.date).length,
+      dated: rows.filter((r) => r.date).length + autoDated,
+      autoDated,
       quarters: plan.map((p) => ({ id: p.quarter.id, number: p.quarter.number, lessons: p.lessons.length, hours: p.lessons.reduce((a, l) => a + l.hours, 0), existing: p.existing })),
       sample: plan.flatMap((p) => p.lessons.slice(0, 8).map((l) => ({ quarter: p.quarter.number, ...l }))).slice(0, 12),
       errors,
@@ -310,7 +320,7 @@ export class PlanService {
     for (const l of lessons) {
       const d = fmtDate(l.date)!;
       if (dto.untilToday !== false && d > today) continue;
-      topics.set(d, [...(topics.get(d) ?? []), l.topic]);
+      topics.set(d, [...(topics.get(d) ?? []), ...(l.topic ? [l.topic] : [])]);
     }
     if (!topics.size) throw new BadRequestException(dto.untilToday !== false ? 'Бүгінге дейін күні қойылған сабақ жоқ' : 'Жоспарда күні қойылған сабақ жоқ');
     const colWhere = { classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, ...(group ? { OR: [{ groupId: group.id }, { groupId: null }] } : {}) };
@@ -326,13 +336,13 @@ export class PlanService {
     for (const [d, list] of topics) {
       const c = byDate.get(d);
       if (!c) create.push({ date: d, topic: join(list) });
-      else if (!c.topic && (c.groupId ?? null) === gid) update.push({ id: c.id, topic: join(list) });
+      else if (!c.topic && list.length && (c.groupId ?? null) === gid) update.push({ id: c.id, topic: join(list) });
     }
     if (own + create.length > 120) throw new BadRequestException('Бір тоқсанға 120-дан артық баған қосуға болмайды');
     await this.prisma.$transaction(async (tx) => {
       if (create.length) {
         await tx.gradeColumn.createMany({
-          data: create.map((c) => ({ schoolId: user.schoolId, classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, groupId: gid, teacherId: user.teacherId, date: toDate(c.date), topic: c.topic })),
+          data: create.map((c) => ({ schoolId: user.schoolId, classId: dto.classId, subjectId: dto.subjectId, quarterId: dto.quarterId, groupId: gid, teacherId: user.teacherId, date: toDate(c.date), topic: c.topic || null })),
         });
       }
       for (const u of update) await tx.gradeColumn.update({ where: { id: u.id }, data: { topic: u.topic } });

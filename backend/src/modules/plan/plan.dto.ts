@@ -16,7 +16,7 @@ export class PlanExportQuery extends PlanQuery {
 
 export class PlanLessonInput {
   @IsOptional() @Transform(nullIfEmpty) @IsString() @MaxLength(LIMITS.section) section?: string | null;
-  @Transform(trim) @IsString() @MaxLength(LIMITS.topic) topic: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(LIMITS.topic) topic: string = '';
   @IsOptional() @Transform(nullIfEmpty) @IsString() @MaxLength(LIMITS.objectives) objectives?: string | null;
   @Type(() => Number) @IsInt() @Min(1) @Max(LIMITS.hours) hours: number = 1;
   @IsOptional() @Transform(nullIfEmpty) @IsDateStr() date?: string | null;

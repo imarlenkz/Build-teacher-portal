@@ -110,7 +110,11 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
   const [draft, setDraft] = useState<PlanLesson[] | null>(null);
   const [modal, setModal] = useState<'import' | 'copy' | 'dates' | 'journal' | 'paste' | null>(null);
   const editing = draft != null;
-  const lessons = draft ?? p.lessons;
+  const slots = useMemo(() => slotDates(p.startDate, p.endDate, p.weekdays), [p]);
+  // Жоспар әлі жоқ болса — сабақ кестесі бойынша күндері қойылған бос сабақтар көрсетіледі.
+  const skeleton = useMemo<PlanLesson[]>(() => slots.map((date) => ({ ...blank(), date })), [slots]);
+  const fromTimetable = !editing && !p.lessons.length && skeleton.length > 0;
+  const lessons = draft ?? (fromTimetable ? skeleton : p.lessons);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['plan'] });
     qc.invalidateQueries({ queryKey: ['journal'] });
@@ -125,7 +129,7 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
   }, [dirty]);
 
   const save = useMutation({
-    mutationFn: () => api.put<Plan>('/plan', { ...base(p), lessons: draft!.filter((l) => l.topic.trim()).map(strip) }),
+    mutationFn: () => api.put<Plan>('/plan', { ...base(p), lessons: draft!.filter((l) => l.topic.trim() || l.date).map(strip) }),
     onSuccess: (next) => {
       qc.setQueryData(['plan', base(p)], next);
       refresh();
@@ -135,8 +139,7 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
     onError: (e) => toast((e as Error).message, 'error'),
   });
 
-  const slots = useMemo(() => slotDates(p.startDate, p.endDate, p.weekdays), [p]);
-  const hours = totalHours(lessons);
+  const hours = fromTimetable ? 0 : totalHours(lessons);
   const past = p.lessons.filter((l) => l.past);
   const done = past.filter((l) => l.columnId).length;
   const missingDates = new Set(p.lessons.filter((l) => l.past && l.date && !l.columnId).map((l) => l.date!)).size;
@@ -152,7 +155,7 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
     });
   const insert = (i: number) => setDraft((d) => [...d!.slice(0, i + 1), { ...blank(), section: d![i]?.section ?? null }, ...d!.slice(i + 1)]);
   const remove = (i: number) => setDraft((d) => d!.filter((_, k) => k !== i));
-  const startEdit = () => setDraft(p.lessons.length ? p.lessons.map((l) => ({ ...l })) : [blank()]);
+  const startEdit = () => setDraft(p.lessons.length ? p.lessons.map((l) => ({ ...l })) : skeleton.length ? skeleton.map((l) => ({ ...l })) : [blank()]);
 
   return (
     <div>
@@ -161,12 +164,12 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
           {dot(p.startDate)} – {dot(p.endDate)}
         </span>
         <span className="chip">
-          Жоспарда: <b className="mono">{lessons.length}</b> сабақ, <b className="mono">{hours}</b> сағат
+          Жоспарда: <b className="mono">{fromTimetable ? 0 : lessons.length}</b> сабақ, <b className="mono">{hours}</b> сағат
         </span>
         {p.weekdays.length > 0 ? (
           <span className="chip" title={`Кесте: ${p.weekdays.map((w) => WEEKDAYS_KK[w - 1]).join(', ')}. Мерекелік күндер шегерілді.`}>
             Кесте бойынша: <b className="mono">{slots.length}</b> сабақ
-            {slots.length > 0 && hours !== slots.length && <span className={hours > slots.length ? 'c-bad' : 'c-warn'}>&nbsp;({hours > slots.length ? '+' : ''}{hours - slots.length})</span>}
+            {slots.length > 0 && hours > 0 && hours !== slots.length && <span className={hours > slots.length ? 'c-bad' : 'c-warn'}>&nbsp;({hours > slots.length ? '+' : ''}{hours - slots.length})</span>}
           </span>
         ) : (
           <span className="chip muted">Сабақ кестесі жоқ</span>
@@ -193,7 +196,7 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
               </>
             )}
             <button className="btn primary" onClick={startEdit}>
-              {p.lessons.length ? 'Өзгерту' : '+ Жоспар құру'}
+              {p.lessons.length ? 'Өзгерту' : fromTimetable ? 'Тақырыптарды жазу' : '+ Жоспар құру'}
             </button>
           </>
         )}
@@ -215,6 +218,12 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
         )}
       </div>
 
+      {fromTimetable && (
+        <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+          Жоспар әлі сақталмаған. Төменде {p.quarter}-тоқсанның сабақ күндері кесте бойынша автоматты түрде шығарылды ({p.weekdays.map((w) => WEEKDAYS_KK[w - 1]).join(', ')}; мерекелер шегерілді).
+          {canWrite && ' Тақырыптарды «Тақырыптарды жазу» арқылы толтырыңыз немесе Excel-ден импорттаңыз: файлда күндер болмаса, олар да кесте бойынша қойылады.'}
+        </div>
+      )}
       {!lessons.length ? (
         <div className="card">
           <Empty>
@@ -261,7 +270,7 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
                         <tr>
                           <td className="id">{i + 1}</td>
                           <td style={{ whiteSpace: 'pre-wrap', padding: '8px 12px' }}>
-                            {l.topic}
+                            {l.topic || <span className="muted">тақырып жазылмаған</span>}
                             {l.notes && <div className="muted" style={{ fontSize: 12 }}>{l.notes}</div>}
                           </td>
                           <td className="hide-sm muted" style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, padding: '8px 12px', maxWidth: 420 }}>
@@ -297,7 +306,7 @@ function PlanView({ p, canWrite }: { p: Plan; canWrite: boolean }) {
               <button className="btn" onClick={() => insert(lessons.length - 1)}>
                 + Сабақ қосу
               </button>
-              <span>Бос тақырыпты жолдар сақталмайды. Күн {p.quarter}-тоқсан аралығында болуы керек.</span>
+              <span>Тақырыбы да, күні де жоқ жолдар сақталмайды. Күн {p.quarter}-тоқсан аралығында болуы керек.</span>
             </div>
           )}
         </div>
@@ -463,6 +472,7 @@ interface ImportResult {
   total: number;
   hours: number;
   dated: number;
+  autoDated?: number;
   quarters: { id: number; number: number; lessons: number; hours: number; existing: number }[];
   sample: (PlanLesson & { quarter: number })[];
   errors: { row: number; message: string }[];
@@ -577,6 +587,11 @@ function ImportModal({ p, onClose, onDone }: { p: Plan; onClose: () => void; onD
                 <input type="checkbox" checked={split} onChange={(e) => toggleSplit(e.target.checked)} />
                 Файлдағы тоқсан белгілері бойынша бөлу (алынса — бәрі {p.quarter}-тоқсанға)
               </label>
+            )}
+            {!!res.autoDated && (
+              <div className="muted" style={{ fontSize: 13 }}>
+                Файлда күндер жоқ: {res.autoDated} сабаққа күн сабақ кестесі бойынша автоматты қойылады.
+              </div>
             )}
             {replaced.length > 0 && (
               <div className="c-warn" style={{ fontSize: 13 }}>
