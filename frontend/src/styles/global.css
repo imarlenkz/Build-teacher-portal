@@ -2081,3 +2081,22 @@ button.kpi:hover {
   color: var(--muted);
   font-style: italic;
 }
+/* Қатысу: сабаққа келмеген оқушы — «н» */
+.mark-input.abs {
+  border-color: var(--bad);
+}
+.mark-input.abs::placeholder {
+  color: var(--bad);
+  opacity: 1;
+  font-weight: 600;
+}
+.mark-input.abs-S,
+.mark-input.abs-A,
+.mark-input.abs-O {
+  border-color: var(--warn);
+}
+.mark-input.abs-S::placeholder,
+.mark-input.abs-A::placeholder,
+.mark-input.abs-O::placeholder {
+  color: var(--warn);
+}

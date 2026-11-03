@@ -27,6 +27,8 @@ export interface JournalRow {
   studentCode: string;
   left: boolean;
   marks: (number | null)[];
+  /** Қатысу: баған күні сабаққа келмесе — N | S | A | O. */
+  absent?: (string | null)[];
   foCount: number;
   foAvg: number | null;
   bjb: ScoreCell[];

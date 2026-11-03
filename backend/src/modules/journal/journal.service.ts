@@ -90,6 +90,21 @@ export class JournalService {
       ...finals.map((f) => f.studentId),
     ]);
     const students = await this.students(user, q.classId, q.subjectId, group?.id ?? null, linked);
+    // Қатысу: баған күндеріндегі осы пән сабағына келмегендер (себепсіз/себепті/ауру/басқа).
+    const colDates = [...new Set(columns.map((c) => fmtDate(c.date)!))];
+    const absentRows = colDates.length
+      ? await this.prisma.attendance.findMany({
+          where: {
+            schoolId: user.schoolId,
+            studentId: { in: students.map((s) => s.id) },
+            status: { in: ['N', 'S', 'A', 'O'] },
+            date: { in: columns.map((c) => c.date) },
+            lesson: { classId: q.classId, subjectId: q.subjectId },
+          },
+          select: { studentId: true, date: true, status: true },
+        })
+      : [];
+    const absentMap = new Map(absentRows.map((a) => [`${a.studentId}:${fmtDate(a.date)}`, a.status as string]));
     const bjb = assessments.filter((a) => a.type === 'BJB');
     // Топ көрінісінде топтың ТЖБ-сы басым; болмаса бүкіл сыныптың ТЖБ-сы.
     const interim = assessments.filter((a) => a.type === 'ARALYK');
@@ -124,6 +139,8 @@ export class JournalService {
         studentCode: s.studentCode,
         left: s.classId !== q.classId || s.status !== 'ACTIVE' || (!!group && !s.groupMemberships.some((m) => m.groupId === group.id)),
         marks,
+        /** Әр баған күнінде сабаққа келмегені: N | S | A | O, келсе null. */
+        absent: columns.map((c) => absentMap.get(`${s.id}:${fmtDate(c.date)}`) ?? null),
         foCount: marks.filter((m) => m != null).length,
         foAvg: computed.foPct == null ? null : round1((computed.foPct / 100) * 10),
         bjb: bjbRes.map((r) => (r ? { score: r.score, absent: r.absent, pct: r.pct } : null)),

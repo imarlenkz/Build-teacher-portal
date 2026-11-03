@@ -13,6 +13,8 @@ import { Badge, Card, ConfirmDialog, Empty, ErrorState, ExportMenu, Field, Modal
 const key = (sid: number, cid: number) => `${sid}:${cid}`;
 const MARKS = [2, 3, 4, 5];
 const ABSENT = 'ж';
+/** Қатысу белгісі журнал ұяшығында: «н» — келмеді. */
+const ABS_KK: Record<string, string> = { N: 'себепсіз', S: 'себепті', A: 'ауырған', O: 'басқа себеп' };
 
 type SumKind = 'BJB' | 'TJB' | 'ARALYK';
 type ScoreCell = JournalRow['tjb'];
@@ -431,10 +433,16 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                     </td>
                     {j.columns.map((col, ci) => {
                       const k = key(r.studentId, col.id);
+                      const abs = r.absent?.[ci] ?? null;
                       return (
-                        <td key={col.id} className={`center mark-col ${marks[k] !== origMarks[k] ? 'changed' : ''}`}>
+                        <td
+                          key={col.id}
+                          className={`center mark-col ${marks[k] !== origMarks[k] ? 'changed' : ''}`}
+                          title={abs ? `Сабаққа келмеді (${ABS_KK[abs] ?? abs})` : undefined}
+                        >
                           <input
-                            className="input mono mark-input"
+                            className={`input mono mark-input ${abs ? `abs abs-${abs}` : ''}`}
+                            placeholder={abs ? 'н' : undefined}
                             inputMode="numeric"
                             value={marks[k]}
                             disabled={!canWrite}
