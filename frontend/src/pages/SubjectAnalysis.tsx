@@ -56,8 +56,10 @@ interface Data {
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV'];
-const qTone = (v: number | null) => (v == null ? '' : v < 30 ? 'c-bad' : v < 50 ? 'c-warn' : v >= 70 ? 'c-ok' : '');
-const pTone = (v: number | null) => (v == null ? '' : v < 70 ? 'c-bad' : v < 90 ? 'c-warn' : '');
+const qTone = (v: number | null) => (v == null ? '' : v < 30 ? 'bad' : v < 50 ? 'warn' : v >= 70 ? 'ok' : '');
+const pTone = (v: number | null) => (v == null ? '' : v < 70 ? 'bad' : v < 90 ? 'warn' : 'ok');
+/** Excel-дегі шартты пішімдеу сияқты: ұяшық фоны деңгейге қарай боялады. */
+const fill = (tone: string) => (tone ? { background: `var(--${tone}s)`, color: `var(--${tone})`, fontWeight: 600 } : undefined);
 const mark = (v: number | null) => (v == null ? '—' : v.toFixed(2));
 
 /** Пәндер бойынша жалпы талдау: тоқсандық/жылдық бағалар негізінде сапа, үлгерім, 5/4/3/2, СОУ, БЖБ/ТЖБ, қатысу. */
@@ -146,7 +148,7 @@ export default function SubjectAnalysis() {
         <div className="stack">
           <div className="kpis">
             <DashboardCard label="Сапа" value={pct(d!.totals.quality)} tone="ok" sub="«5» + «4» үлесі" />
-            <DashboardCard label="Үлгерім" value={pct(d!.totals.progress)} tone="vio" sub="«2»-сіз бағалар үлесі" />
+            <DashboardCard label="Үлгерім" value={pct(d!.totals.progress)} tone="warn" sub="«2»-сіз бағалар үлесі" />
             <DashboardCard label="Орташа баға" value={mark(d!.totals.avgMark)} sub={`${d!.subjects.length} пән`} />
             <DashboardCard label="СОУ" value={pct(d!.totals.sou)} sub="білім деңгейі" />
             <DashboardCard label="«2» саны" value={d!.totals.d2} tone={d!.totals.d2 ? 'bad' : undefined} sub={`«5» ${d!.totals.d5} · «4» ${d!.totals.d4} · «3» ${d!.totals.d3} · барлығы ${d!.totals.count}`} />
@@ -206,8 +208,8 @@ export default function SubjectAnalysis() {
                       <td className="num">{r.d4}</td>
                       <td className="num">{r.d3}</td>
                       <td className={`num ${r.d2 ? 'c-bad' : ''}`}>{r.d2}</td>
-                      <td className={`num ${qTone(r.quality)}`}>{pct(r.quality)}</td>
-                      <td className={`num ${pTone(r.progress)}`}>{pct(r.progress)}</td>
+                      <td className="num" style={fill(qTone(r.quality))}>{pct(r.quality)}</td>
+                      <td className="num" style={fill(pTone(r.progress))}>{pct(r.progress)}</td>
                       <td className="num">{mark(r.avgMark)}</td>
                       <td className="num">{pct(r.sou)}</td>
                       <td className="num">{pct(r.bjbAvg)}</td>
@@ -251,10 +253,10 @@ export default function SubjectAnalysis() {
               x="name"
               series={[
                 { key: 'quality', name: 'Сапа', color: 'ok' },
-                { key: 'progress', name: 'Үлгерім', color: 'vio' },
+                { key: 'progress', name: 'Үлгерім', color: 'warn' },
               ]}
             />
-            <Legend items={[{ name: 'Сапа', color: 'ok' }, { name: 'Үлгерім', color: 'vio' }]} />
+            <Legend items={[{ name: 'Сапа', color: 'ok' }, { name: 'Үлгерім', color: 'warn' }]} />
           </Card>
           <p className="muted" style={{ fontSize: 12 }}>
             Сапа = («5» + «4») / барлық баға · Үлгерім = «2»-сіз бағалар / барлық баға · СОУ = (100·n5 + 64·n4 + 36·n3 + 16·n2) / N. Жылдық баға — оқушының қойылған тоқсандық бағаларының орташасы. 2–4 сыныптарда ТЖБ орнына аралық бағалау есептеледі; 1-сынып кірмейді.
@@ -288,10 +290,10 @@ function Detail({ d, onClose }: { d: Data; onClose: () => void }) {
                 x="label"
                 series={[
                   { key: 'quality', name: 'Сапа', color: 'ok' },
-                  { key: 'progress', name: 'Үлгерім', color: 'vio' },
+                  { key: 'progress', name: 'Үлгерім', color: 'warn' },
                 ]}
               />
-              <Legend items={[{ name: 'Сапа', color: 'ok' }, { name: 'Үлгерім', color: 'vio' }]} />
+              <Legend items={[{ name: 'Сапа', color: 'ok' }, { name: 'Үлгерім', color: 'warn' }]} />
             </>
           ) : (
             <Empty>Дерек жоқ</Empty>
@@ -317,8 +319,8 @@ function Detail({ d, onClose }: { d: Data; onClose: () => void }) {
                     <td>{g.grade}-сынып</td>
                     <td className="num">{g.count}</td>
                     <td className="num">{`${g.d5}/${g.d4}/${g.d3}/${g.d2}`}</td>
-                    <td className={`num ${qTone(g.quality)}`}>{pct(g.quality)}</td>
-                    <td className={`num ${pTone(g.progress)}`}>{pct(g.progress)}</td>
+                    <td className="num" style={fill(qTone(g.quality))}>{pct(g.quality)}</td>
+                    <td className="num" style={fill(pTone(g.progress))}>{pct(g.progress)}</td>
                     <td className="num">{mark(g.avgMark)}</td>
                     <td className="num">{pct(g.tjbAvg)}</td>
                   </tr>
@@ -362,9 +364,9 @@ function Detail({ d, onClose }: { d: Data; onClose: () => void }) {
                     <td className="num">{r.d4}</td>
                     <td className="num">{r.d3}</td>
                     <td className={`num ${r.d2 ? 'c-bad' : ''}`}>{r.d2}</td>
-                    <td className={`num ${qTone(r.quality)}`}>{pct(r.quality)}</td>
+                    <td className="num" style={fill(qTone(r.quality))}>{pct(r.quality)}</td>
                     {det.prevLabel && <td className={`num ${delta == null ? '' : delta < 0 ? 'c-bad' : delta > 0 ? 'c-ok' : ''}`}>{delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta}`}</td>}
-                    <td className={`num ${pTone(r.progress)}`}>{pct(r.progress)}</td>
+                    <td className="num" style={fill(pTone(r.progress))}>{pct(r.progress)}</td>
                     <td className="num">{mark(r.avgMark)}</td>
                     <td className="num">{pct(r.sou)}</td>
                     <td className="num">{pct(r.bjbAvg)}</td>
