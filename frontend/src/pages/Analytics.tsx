@@ -51,7 +51,7 @@ export default function Analytics() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Жалпы · I→IV тоқсан' },
     { id: 'classes', label: 'Сыныптар' },
-    { id: 'subjects', label: 'Пәндер' },
+    { id: 'subjects', label: 'Пәндер · қатысу' },
     { id: 'student', label: 'Оқушы' },
     ...(canNat ? [{ id: 'nationality' as Tab, label: 'Ұлт бойынша' }] : []),
     { id: 'risk', label: 'Тәуекел тобы' },
@@ -95,6 +95,11 @@ export default function Analytics() {
       )}
       {tab === 'overview' && <Overview filter={filter} />}
       {tab === 'classes' && <Classes filter={filter} onPick={(id) => set({ classId: id, tab: 'overview' })} />}
+      {tab === 'subjects' && (
+        <p className="muted" style={{ margin: '0 0 12px' }}>
+          Пәндер бойынша сапа, үлгерім, 5/4/3/2 және СОУ — <Link to="/subject-analysis">Пәндер талдауы</Link> бетінде.
+        </p>
+      )}
       {tab === 'subjects' && <Subjects filter={filter} />}
       {tab === 'student' && <StudentTab studentId={s.studentId} onPick={(id) => set({ studentId: id })} />}
       {tab === 'nationality' && canNat && <Nationality />}

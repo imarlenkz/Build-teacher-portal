@@ -73,3 +73,41 @@ export function validateLevels(levels: { name: string; fromPct: number; toPct: n
 
 export const ATTENDED = new Set(['P', 'K']);
 export const ABSENT_EXCUSED = new Set(['S', 'A', 'O']);
+
+export interface MarkStats {
+  count: number;
+  /** Бағалар саны: [5, 4, 3, 2]. */
+  d5: number;
+  d4: number;
+  d3: number;
+  d2: number;
+  /** Сапа: «5» пен «4» үлесі (%). */
+  quality: number | null;
+  /** Үлгерім: «2»-ден басқа бағалар үлесі (%). */
+  progress: number | null;
+  /** Орташа баға. */
+  avgMark: number | null;
+  /** Білім деңгейі (СОУ): (100·n5 + 64·n4 + 36·n3 + 16·n2) / N. */
+  sou: number | null;
+}
+
+/** Бес балдық тоқсандық/жылдық бағалар бойынша сапа, үлгерім, орташа баға және СОУ. */
+export function markStats(marks: number[]): MarkStats {
+  const n = marks.length;
+  const c = (m: number) => marks.filter((x) => x === m).length;
+  const d5 = c(5);
+  const d4 = c(4);
+  const d3 = c(3);
+  const d2 = marks.filter((x) => x <= 2).length;
+  return {
+    count: n,
+    d5,
+    d4,
+    d3,
+    d2,
+    quality: n ? round1(((d5 + d4) / n) * 100) : null,
+    progress: n ? round1(((n - d2) / n) * 100) : null,
+    avgMark: n ? Math.round((marks.reduce((s, x) => s + x, 0) / n) * 100) / 100 : null,
+    sou: n ? round1((100 * d5 + 64 * d4 + 36 * d3 + 16 * d2) / n) : null,
+  };
+}
