@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import type { AuthUser, RequestMeta } from '../../common/auth-user';
@@ -6,13 +6,16 @@ import { P } from '../../common/permissions';
 import { ScopeService } from '../core/scope.service';
 import { LevelsService } from '../core/levels.service';
 import { AuditService } from '../audit/audit.service';
-import { fmtDate, fmtDot, toDate } from '../../common/utils/dates';
+import { addDays, fmtDate, fmtDot, todayStr, toDate } from '../../common/utils/dates';
 import { round1 } from '../../common/utils/stats';
 import { computeQuarter, GradeWeights, usesInterim, weightsFor, yearMark } from '../../common/utils/grades';
 import { ColumnInput, CreateColumnInput, JournalQuery, SaveFinalsInput, SaveMarksInput } from './journal.dto';
+import { autoColumns } from './journal-auto';
 
 @Injectable()
 export class JournalService {
+  private readonly log = new Logger(JournalService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly scope: ScopeService,
@@ -70,9 +73,84 @@ export class JournalService {
     });
   }
 
+  /**
+   * Сабақ кестесі бойынша журналға бағандарды автоматты қосу: соңғы синхрондаудан кейінгі күннен бүгінге дейінгі сабақ күндері.
+   * Өткен күндер қайта өңделмейді, сондықтан мұғалім өшірген баған қайта қосылмайды. Аяқталған тоқсандар толтырылмайды.
+   */
+  private async autoSync(
+    user: AuthUser,
+    q: JournalQuery,
+    cls: { schoolYearId: number },
+    quarter: { id: number; startDate: Date; endDate: Date },
+    group: { id: number; teacherId: number | null } | null,
+  ) {
+    const gid = group?.id ?? null;
+    const key = `${q.classId}:${q.subjectId}:${quarter.id}:${gid ?? 0}`;
+    const today = todayStr();
+    const start = fmtDate(quarter.startDate)!;
+    const end = fmtDate(quarter.endDate)!;
+    if (today < start) return;
+    const state = await this.prisma.journalAutoSync.findUnique({ where: { key } });
+    const prev = state ? fmtDate(state.syncedUntil)! : null;
+    const from = prev ? addDays(prev, 1) : start;
+    const to = today < end ? today : end;
+    if (from > to) return;
+    // Тоқсан аяқталғаннан кейін алғаш ашылса — бұрынғы (импортталған) журналға тиіспейміз.
+    if (!prev && today > end) {
+      await this.prisma.journalAutoSync.createMany({ data: [{ key, schoolId: user.schoolId, syncedUntil: toDate(end) }], skipDuplicates: true });
+      return;
+    }
+    const assignment = await this.prisma.teachingAssignment.findUnique({
+      where: { classId_subjectId_schoolYearId: { classId: q.classId, subjectId: q.subjectId, schoolYearId: cls.schoolYearId } },
+      select: { teacherId: true, slots: { select: { weekday: true }, orderBy: [{ weekday: 'asc' }, { period: 'asc' }] } },
+    });
+    // Кесте әлі жүктелмесе — күтеміз: кесте келгенде тоқсан басынан толтырылады.
+    if (!assignment?.slots.length) return;
+    const range = { gte: toDate(from), lte: toDate(to) };
+    const [cols, plan] = await Promise.all([
+      this.prisma.gradeColumn.findMany({
+        where: { classId: q.classId, subjectId: q.subjectId, quarterId: quarter.id, date: range, ...(gid ? { OR: [{ groupId: gid }, { groupId: null }] } : {}) },
+        select: { date: true },
+      }),
+      this.prisma.planLesson.findMany({
+        where: { classId: q.classId, subjectId: q.subjectId, quarterId: quarter.id, groupId: gid, date: range },
+        select: { date: true, topic: true },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    const existing = new Map<string, number>();
+    for (const c of cols) existing.set(fmtDate(c.date)!, (existing.get(fmtDate(c.date)!) ?? 0) + 1);
+    const topics = new Map<string, string[]>();
+    for (const l of plan) if (l.topic) topics.set(fmtDate(l.date)!, [...(topics.get(fmtDate(l.date)!) ?? []), l.topic]);
+    const create = autoColumns(from, to, assignment.slots.map((s) => s.weekday), existing, topics);
+    const teacherId = group?.teacherId ?? assignment.teacherId;
+    const done = await this.prisma.$transaction(async (tx) => {
+      // Бір уақытта екі сұрау келсе — тек біреуі қосады (compare-and-swap).
+      if (prev) {
+        const r = await tx.journalAutoSync.updateMany({ where: { key, syncedUntil: toDate(prev) }, data: { syncedUntil: toDate(to) } });
+        if (!r.count) return false;
+      } else {
+        const r = await tx.journalAutoSync.createMany({ data: [{ key, schoolId: user.schoolId, syncedUntil: toDate(to) }], skipDuplicates: true });
+        if (!r.count) return false;
+      }
+      if (create.length) {
+        await tx.gradeColumn.createMany({
+          data: create.map((c) => ({ schoolId: user.schoolId, classId: q.classId, subjectId: q.subjectId, quarterId: quarter.id, groupId: gid, teacherId, date: toDate(c.date), topic: c.topic })),
+        });
+      }
+      return true;
+    });
+    if (done && create.length) await this.cache.bump(user.schoolId);
+  }
+
   /** Журнал: сыныптың белсенді оқушылары + тоқсанда бағасы бар (кейін кеткен) оқушылар. */
   async get(user: AuthUser, q: JournalQuery) {
     const { cls, subject, quarter, group } = await this.context(user, q);
+    try {
+      await this.autoSync(user, q, cls, quarter, group);
+    } catch (e) {
+      this.log.warn(`journal auto-sync failed: ${(e as Error).message}`);
+    }
     const base = { classId: q.classId, subjectId: q.subjectId, quarterId: q.quarterId };
     // Топ көрінісінде топқа арналған және топ бөлінгенге дейін бүкіл сыныпқа жасалған деректер көрсетіледі.
     const where = group ? { ...base, OR: [{ groupId: group.id }, { groupId: null }] } : base;

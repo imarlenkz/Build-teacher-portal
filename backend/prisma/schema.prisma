@@ -731,6 +731,20 @@ model PlanLesson {
   @@map("plan_lessons")
 }
 
+/// Журналға кесте бойынша бағандар автоматты қосылған соңғы күн (сынып · пән · тоқсан · топ).
+/// Осы күнге дейінгі сабақтар қайта қосылмайды — мұғалім өшірген баған қайта пайда болмайды.
+model JournalAutoSync {
+  id          Int      @id @default(autoincrement())
+  /// `${classId}:${subjectId}:${quarterId}:${groupId ?? 0}`
+  key         String   @unique
+  schoolId    Int      @map("school_id")
+  syncedUntil DateTime @map("synced_until") @db.Date
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([schoolId])
+  @@map("journal_auto_sync")
+}
+
 // ───────────────────────── Settings ─────────────────────────
 
 /// Деңгей диапазондары — hardcode емес, мектеп әкімшілігі баптайды.
