@@ -1,4 +1,4 @@
-import { levelIndex, scoreStats, validateLevels } from '../src/common/utils/stats';
+import { levelIndex, markStats, round1, scoreStats, validateLevels } from '../src/common/utils/stats';
 import { DEFAULT_LEVELS } from '../src/modules/core/levels.service';
 
 describe('levelIndex', () => {
@@ -48,5 +48,16 @@ describe('validateLevels', () => {
     expect(validateLevels([{ name: 'A', fromPct: 5, toPct: 50 }, { name: 'B', fromPct: 51, toPct: 100 }] as never)).toMatch(/0%/);
     expect(validateLevels([{ name: 'A', fromPct: 0, toPct: 50 }, { name: 'B', fromPct: 51, toPct: 99 }] as never)).toMatch(/100%/);
     expect(validateLevels([{ name: 'A', fromPct: 0, toPct: 100 }] as never)).toMatch(/2–6/);
+  });
+});
+
+describe('markStats', () => {
+  it('computes quality, progress, average mark and SOU', () => {
+    const s = markStats([5, 5, 4, 3, 2]);
+    expect(s).toMatchObject({ count: 5, d5: 2, d4: 1, d3: 1, d2: 1, quality: 60, progress: 80, avgMark: 3.8 });
+    expect(s.sou).toBe(round1((200 + 64 + 36 + 16) / 5));
+  });
+  it('returns nulls for an empty set', () => {
+    expect(markStats([])).toMatchObject({ count: 0, quality: null, progress: null, avgMark: null, sou: null });
   });
 });

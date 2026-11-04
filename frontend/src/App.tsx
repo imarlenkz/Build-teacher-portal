@@ -10,6 +10,7 @@ import { Spinner } from './components/ui';
 import { LoginPage } from './pages/Login';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const SubjectAnalysis = lazy(() => import('./pages/SubjectAnalysis'));
 const Students = lazy(() => import('./pages/Students'));
 const StudentProfile = lazy(() => import('./pages/StudentProfile'));
 const Classes = lazy(() => import('./pages/Classes'));
@@ -67,6 +68,7 @@ function Root() {
                   <Route path="tjb" element={<Assessments type="TJB" />} />
                   <Route path="aralyk" element={<Assessments type="ARALYK" />} />
                   <Route path="tjb-analysis" element={<TjbAnalysis />} />
+                  <Route path="subject-analysis" element={<SubjectAnalysis />} />
                   <Route path="report" element={<QuarterReport />} />
                   <Route path="analytics" element={<Analytics />} />
                   <Route path="notifications" element={<Notifications />} />

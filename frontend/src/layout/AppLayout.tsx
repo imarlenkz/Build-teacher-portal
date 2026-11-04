@@ -72,6 +72,7 @@ export function AppLayout() {
       label: t('navGroup.reports'),
       items: [
         { to: '/tjb-analysis', label: t('nav.tjbAnalysis'), icon: 'chart' },
+        { to: '/subject-analysis', label: t('nav.subjectAnalysis'), icon: 'chart' },
         { to: '/report', label: t('nav.report'), icon: 'file' },
         { to: '/analytics', label: t('nav.analytics'), icon: 'trend' },
       ],
