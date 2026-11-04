@@ -77,7 +77,7 @@ export class JournalService {
     // Топ көрінісінде топқа арналған және топ бөлінгенге дейін бүкіл сыныпқа жасалған деректер көрсетіледі.
     const where = group ? { ...base, OR: [{ groupId: group.id }, { groupId: null }] } : base;
     const [columns, assessments, finals, lv, w, canWrite] = await Promise.all([
-      this.prisma.gradeColumn.findMany({ where, include: { grades: true }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+      this.prisma.gradeColumn.findMany({ where, include: { grades: true, homework: { select: { studentId: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
       this.prisma.assessment.findMany({ where, include: { results: true, _count: { select: { criteria: true } } }, orderBy: [{ type: 'asc' }, { date: 'asc' }, { createdAt: 'asc' }] }),
       this.prisma.quarterGrade.findMany({ where: base }),
       this.levels.get(user.schoolId),
@@ -139,6 +139,8 @@ export class JournalService {
         studentCode: s.studentCode,
         left: s.classId !== q.classId || s.status !== 'ACTIVE' || (!!group && !s.groupMemberships.some((m) => m.groupId === group.id)),
         marks,
+        /** Әр баған бойынша үй тапсырмасын орындағаны. */
+        homework: columns.map((c) => c.homework.some((h) => h.studentId === s.id)),
         /** Әр баған күнінде сабаққа келмегені: N | S | A | O, келсе null. */
         absent: columns.map((c) => absentMap.get(`${s.id}:${fmtDate(c.date)}`) ?? null),
         foCount: marks.filter((m) => m != null).length,
@@ -271,12 +273,15 @@ export class JournalService {
     const current = await this.get(user, dto);
     const colIds = new Set(current.columns.map((c) => c.id));
     const allowed = new Set(current.rows.map((r) => r.studentId));
-    for (const m of dto.marks) {
+    const hw = dto.homework ?? [];
+    for (const m of [...dto.marks, ...hw]) {
       if (!colIds.has(m.columnId)) throw new BadRequestException('Баған осы журналға жатпайды');
       if (!allowed.has(m.studentId)) throw new BadRequestException('Тізімде бұл журналға (сыныпқа не топқа) жатпайтын оқушы бар');
     }
     let set = 0;
     let cleared = 0;
+    let hwDone = 0;
+    let hwUndone = 0;
     await this.prisma.$transaction(async (tx) => {
       for (const m of dto.marks) {
         if (m.value == null) {
@@ -290,9 +295,25 @@ export class JournalService {
           set++;
         }
       }
+      for (const h of hw) {
+        if (h.done) {
+          await tx.homeworkMark.upsert({
+            where: { columnId_studentId: { columnId: h.columnId, studentId: h.studentId } },
+            create: { columnId: h.columnId, studentId: h.studentId, updatedById: user.id },
+            update: {},
+          });
+          hwDone++;
+        } else {
+          hwUndone += (await tx.homeworkMark.deleteMany({ where: { columnId: h.columnId, studentId: h.studentId } })).count;
+        }
+      }
+      const parts = [
+        set || cleared || !hw.length ? `${set} баға${cleared ? `, ${cleared} өшірілді` : ''}` : '',
+        hwDone || hwUndone ? `үй тапсырмасы: +${hwDone}${hwUndone ? ` / −${hwUndone}` : ''}` : '',
+      ].filter(Boolean);
       await this.audit.record(
         user,
-        { action: 'Журналға баға қойды', entity: 'journal', entityId: `${dto.classId}:${dto.subjectId}:${dto.quarterId}`, summary: `${cls.name} · ${subject.name} · ${quarter.number}-тоқсан`, after: `${set} баға${cleared ? `, ${cleared} өшірілді` : ''}` },
+        { action: 'Журналға баға қойды', entity: 'journal', entityId: `${dto.classId}:${dto.subjectId}:${dto.quarterId}`, summary: `${cls.name} · ${subject.name} · ${quarter.number}-тоқсан`, after: parts.join('; ') },
         meta,
         tx,
       );

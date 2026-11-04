@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { IsDateStr } from '../../common/dto/validators';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -41,8 +41,17 @@ export class MarkInput {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) value?: number | null;
 }
 
+export class HomeworkInput {
+  @Type(() => Number) @IsInt() columnId: number;
+  @Type(() => Number) @IsInt() studentId: number;
+  /** true — үй тапсырмасын орындады, false — белгіні алып тастау. */
+  @IsBoolean() done: boolean;
+}
+
 export class SaveMarksInput extends JournalQuery {
   @IsArray() @ArrayMaxSize(5000) @ValidateNested({ each: true }) @Type(() => MarkInput) marks: MarkInput[];
+  /** Үй тапсырмасы белгілері (тек өзгергендері). */
+  @IsOptional() @IsArray() @ArrayMaxSize(5000) @ValidateNested({ each: true }) @Type(() => HomeworkInput) homework?: HomeworkInput[];
 }
 
 export class FinalInput {
