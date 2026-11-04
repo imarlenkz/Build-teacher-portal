@@ -380,6 +380,7 @@ model Student {
   attendance        Attendance[]
   assessmentResults AssessmentResult[]
   grades            Grade[]
+  homeworkMarks     HomeworkMark[]
   quarterGrades     QuarterGrade[]
   groupMemberships  SubjectGroupMember[]
   externalResults   ExternalResult[]
@@ -630,6 +631,7 @@ model GradeColumn {
   teacher Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   group   SubjectGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
   grades  Grade[]
+  homework HomeworkMark[]
 
   @@index([classId, subjectId, quarterId])
   @@map("grade_columns")
@@ -650,6 +652,22 @@ model Grade {
   @@unique([columnId, studentId])
   @@index([studentId])
   @@map("grades")
+}
+
+/// Үй тапсырмасын орындағаны туралы белгі (журнал ұяшығында бағаның қасында). Жазба бар болса — орындады.
+model HomeworkMark {
+  id          Int      @id @default(autoincrement())
+  columnId    Int      @map("column_id")
+  studentId   Int      @map("student_id")
+  updatedById Int?     @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  column  GradeColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([columnId, studentId])
+  @@index([studentId])
+  @@map("homework_marks")
 }
 
 /// Мұғалім қойған тоқсандық қорытынды баға (2–5).

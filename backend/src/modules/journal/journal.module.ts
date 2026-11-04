@@ -38,6 +38,7 @@ class JournalController {
       '№',
       'Оқушы',
       ...j.columns.map((c) => fmtDot(c.date).slice(0, 5)),
+      'Үй тапсырмасы',
       'ФО орташа',
       'ФО %',
       ...(j.primary
@@ -51,6 +52,7 @@ class JournalController {
       i + 1,
       r.fullName + (r.left ? ' (кетті)' : ''),
       ...r.marks,
+      j.columns.length ? `${r.homework.filter(Boolean).length}/${j.columns.length}` : null,
       r.foAvg,
       r.computed.foPct,
       ...(j.primary
@@ -72,7 +74,7 @@ class JournalController {
     if (q.format === 'csv') return this.exporter.send(res, this.exporter.csv(headers, rows), name, 'csv');
     const buf = await this.exporter.xlsx([
       { name: 'Журнал', title, subtitle, headers, rows },
-      { name: 'Сабақтар', title, headers: ['Күні', 'Тақырып'], rows: j.columns.map((c) => [fmtDot(c.date), c.topic ?? '']), widths: [14, 80] },
+      { name: 'Сабақтар', title, headers: ['Күні', 'Тақырып', 'Үй тапсырмасын орындағандар'], rows: j.columns.map((c, ci) => [fmtDot(c.date), c.topic ?? '', j.rows.filter((r) => r.homework[ci]).length]), widths: [14, 80, 18] },
     ]);
     return this.exporter.send(res, buf, name, 'xlsx');
   }

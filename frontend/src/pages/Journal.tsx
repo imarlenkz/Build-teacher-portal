@@ -158,7 +158,13 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
     return m;
   };
   const initFinals = () => Object.fromEntries(j.rows.map((r) => [r.studentId, r.final ? String(r.final.mark) : ''])) as Record<number, string>;
+  const initHw = () => {
+    const m: Record<string, boolean> = {};
+    j.rows.forEach((r) => j.columns.forEach((c, ci) => (m[key(r.studentId, c.id)] = !!r.homework?.[ci])));
+    return m;
+  };
   const [marks, setMarks] = useState(initMarks);
+  const [hw, setHw] = useState(initHw);
   const [finals, setFinals] = useState(initFinals);
   const [col, setCol] = useState<Journal['columns'][number] | 'new' | null>(null);
   const [sumForm, setSumForm] = useState<{ kind: SumKind; initial: SumCol | null } | null>(null);
@@ -180,10 +186,16 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
 
   const origMarks = useMemo(initMarks, [j]); // eslint-disable-line react-hooks/exhaustive-deps
   const origFinals = useMemo(initFinals, [j]); // eslint-disable-line react-hooks/exhaustive-deps
+  const origHw = useMemo(initHw, [j]); // eslint-disable-line react-hooks/exhaustive-deps
   const markChanges = Object.keys(marks).filter((k) => marks[k] !== origMarks[k]);
+  const hwChanges = Object.keys(hw).filter((k) => hw[k] !== origHw[k]);
+  // Жаңа баған қосылса/өшірілсе — енгізілген өзгерістерді сақтап, жаңа ұяшықтарды толтырамыз.
+  const keepCur = <T,>(orig: Record<string, T>, cur: Record<string, T>) => ({ ...orig, ...Object.fromEntries(Object.entries(cur).filter(([k]) => k in orig)) });
+  useEffect(() => setMarks((cur) => keepCur(origMarks, cur)), [origMarks]);
+  useEffect(() => setHw((cur) => keepCur(origHw, cur)), [origHw]);
   const finalChanges = j.rows.filter((r) => finals[r.studentId] !== origFinals[r.studentId]);
   const scoreChanges = Object.keys(scores).filter((k) => scores[k] !== (origScores[k] ?? ''));
-  const dirty = markChanges.length > 0 || finalChanges.length > 0 || scoreChanges.length > 0;
+  const dirty = markChanges.length > 0 || hwChanges.length > 0 || finalChanges.length > 0 || scoreChanges.length > 0;
 
   useEffect(() => {
     if (!dirty) return;
@@ -231,12 +243,16 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
         byAssessment.set(aid, [...(byAssessment.get(aid) ?? []), item]);
       }
       for (const [aid, results] of byAssessment) await api.put(`/assessments/${aid}/results`, { results });
-      if (markChanges.length) {
+      if (markChanges.length || hwChanges.length) {
         res = await api.put<Journal>('/journal/marks', {
           ...base(j),
           marks: markChanges.map((k) => {
             const [studentId, columnId] = k.split(':').map(Number);
             return { studentId, columnId, value: marks[k] ? Number(marks[k]) : null };
+          }),
+          homework: hwChanges.map((k) => {
+            const [studentId, columnId] = k.split(':').map(Number);
+            return { studentId, columnId, done: hw[k] };
           }),
         });
       }
@@ -258,7 +274,14 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
     },
   });
 
+  const toggleHw = (sid: number, cid: number) => setHw((m) => ({ ...m, [key(sid, cid)]: !m[key(sid, cid)] }));
+
   const setMark = (sid: number, cid: number, v: string) => {
+    // «+» — үй тапсырмасы белгісін ауыстыру (пернетақтадан тез қою үшін).
+    if (v.includes('+')) {
+      toggleHw(sid, cid);
+      v = v.replace(/\+/g, '');
+    }
     const clean = v.replace(/[^0-9]/g, '').slice(0, 2);
     const n = Number(clean);
     setMarks((m) => ({ ...m, [key(sid, cid)]: clean === '' ? '' : n > 10 ? '10' : n < 1 ? '' : String(n) }));
@@ -438,12 +461,14 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                     {j.columns.map((col, ci) => {
                       const k = key(r.studentId, col.id);
                       const abs = r.absent?.[ci] ?? null;
+                      const done = !!hw[k];
                       return (
                         <td
                           key={col.id}
-                          className={`center mark-col ${marks[k] !== origMarks[k] ? 'changed' : ''}`}
+                          className={`center mark-col ${marks[k] !== origMarks[k] || done !== origHw[k] ? 'changed' : ''}`}
                           title={abs ? `Сабаққа келмеді (${ABS_KK[abs] ?? abs})` : undefined}
                         >
+                          <div className="mark-cell">
                           <input
                             className={`input mono mark-input ${abs ? `abs abs-${abs}` : ''}`}
                             placeholder={abs ? 'н' : undefined}
@@ -457,6 +482,21 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                             onChange={(e) => setMark(r.studentId, col.id, e.target.value)}
                             aria-label={`${r.fullName}, ${dot(col.date)}`}
                           />
+                          {(canWrite || done) && (
+                            <button
+                              type="button"
+                              className={`hw-toggle ${done ? 'on' : ''}`}
+                              disabled={!canWrite}
+                              tabIndex={-1}
+                              onClick={() => toggleHw(r.studentId, col.id)}
+                              title={done ? 'Үй тапсырмасын орындады (алып тастау үшін басыңыз)' : 'Үй тапсырмасын орындады деп белгілеу (немесе ұяшықта «+»)'}
+                              aria-label={`${r.fullName}, ${dot(col.date)}: үй тапсырмасы`}
+                              aria-pressed={done}
+                            >
+                              ✓
+                            </button>
+                          )}
+                          </div>
                         </td>
                       );
                     })}
@@ -550,6 +590,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
                   className="btn"
                   onClick={() => {
                     setMarks(origMarks);
+                    setHw(origHw);
                     setFinals(origFinals);
                     setScores(origScores);
                   }}
@@ -565,7 +606,7 @@ function QuarterView({ j, canWrite }: { j: Journal; canWrite: boolean }) {
         </div>
       </div>
       <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-        Ағымдағы баға 1–10 балл. Тоқсан % = {j.primary ? `ФО% × ${w.fo}% + аралық бағалау% × ${w.interim ?? 0}%` : `ФО% × ${w.fo}% + БЖБ% × ${w.bjb}% + ТЖБ% × ${w.tjb}%`}; деректері жоқ бөлік (*) есептен шығып, қалғандарының салмағы пропорционалды артады. Баға: {lv.length === 4 ? lv.map((l, i) => `${l.fromPct}–${l.toPct}% → ${i + 2}`).join(', ') : '85%+ → 5, 65% → 4, 40% → 3, одан төмен → 2'}. {j.primary ? 'Аралық бағалау' : 'БЖБ/ТЖБ'} балын осы кестеде тікелей енгізуге болады (жұмысқа қатыспаса — «ж»); критерий бойынша құрылған жұмыстар «Бағалау» бетінде толтырылады. Enter / ↑↓←→ — жылжу.
+        Ағымдағы баға 1–10 балл. Тоқсан % = {j.primary ? `ФО% × ${w.fo}% + аралық бағалау% × ${w.interim ?? 0}%` : `ФО% × ${w.fo}% + БЖБ% × ${w.bjb}% + ТЖБ% × ${w.tjb}%`}; деректері жоқ бөлік (*) есептен шығып, қалғандарының салмағы пропорционалды артады. Баға: {lv.length === 4 ? lv.map((l, i) => `${l.fromPct}–${l.toPct}% → ${i + 2}`).join(', ') : '85%+ → 5, 65% → 4, 40% → 3, одан төмен → 2'}. {j.primary ? 'Аралық бағалау' : 'БЖБ/ТЖБ'} балын осы кестеде тікелей енгізуге болады (жұмысқа қатыспаса — «ж»); критерий бойынша құрылған жұмыстар «Бағалау» бетінде толтырылады. Бағаның қасындағы ✓ — үй тапсырмасын орындады (ұяшықта «+» басса да болады). Enter / ↑↓←→ — жылжу.
       </div>
 
       {sumForm && (

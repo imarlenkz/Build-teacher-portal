@@ -1616,8 +1616,42 @@ table.tbl {
   margin-left: 6px;
 }
 .tbl.journal .mark-col {
-  width: 46px;
-  min-width: 46px;
+  width: 64px;
+  min-width: 64px;
+}
+.mark-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Үй тапсырмасы белгісі: бағаның қасындағы кішкентай ✓ */
+.hw-toggle {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px dashed var(--muted);
+  opacity: 0.45;
+  border-radius: 5px;
+  background: transparent;
+  color: transparent;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  flex: none;
+}
+.hw-toggle:hover:not(:disabled) {
+  color: var(--muted);
+  opacity: 1;
+}
+.hw-toggle.on {
+  opacity: 1;
+  border: 1px solid var(--acc-fill);
+  background: var(--acc-fill);
+  color: #fff;
+}
+.hw-toggle:disabled {
+  cursor: default;
 }
 .tbl.journal .col-topic {
   font-weight: 400;
