@@ -31,6 +31,7 @@ import { PlanModule } from './modules/plan/plan.module';
 import { NexusModule } from './modules/nexus/nexus.module';
 import { BilimClassModule } from './modules/bilimclass/bilimclass.module';
 import { TestileuModule } from './modules/testileu/testileu.module';
+import { PlanitModule } from './modules/planit/planit.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -81,6 +82,7 @@ import { BackupsModule } from './modules/backups/backups.module';
     NexusModule,
     BilimClassModule,
     TestileuModule,
+    PlanitModule,
     AnalyticsModule,
     ReportsModule,
     NotificationsModule,

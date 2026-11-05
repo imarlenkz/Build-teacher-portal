@@ -212,5 +212,6 @@ Firewall: тек 22, 80, 443 порттары ашық болуы керек. Po
 | `IID_PASSWORD_LOGIN` | Құпиясөзбен кіруді қалдыру (әдепкі `true`) |
 | `NEXUS_API_URL`, `NEXUS_INTEGRATION_KEY` | Nexus-тен мұғалімдер мен сабақ кестесін импорттау (кілт Nexus-тегі `INTEGRATION_KEY`-мен бірдей) |
 | `TESTILEU_INTEGRATION_KEY` | Тестілеу (test.imarlen.kz) нәтижелерін журналға қабылдау: `POST /api/integration/testileu/results`. Кілт Тестілеудегі `USTAZ_INTEGRATION_KEY`-мен бірдей. ФО тесті → сабақ күнінің бағанына 1–10 балл (пайыз / 10); атауында БЖБ/СОР, ТЖБ/СОЧ, «Аралық» бар тест → жиынтық бағалау (2–4 сыныпта аралық). Сәйкестенбегендері: Басқару → Тестілеу |
+| `PLANIT_INTEGRATION_KEY` | Planit (checker.imarlen.kz) оқушыларды импорттауы: `GET /api/integration/planit/roster?school_code=…` — ағымдағы жылдың сыныптары мен белсенді оқушылары (ЖСН, телефон берілмейді). Кілт Planit-тегі `USTAZ_INTEGRATION_KEY`-мен бірдей |
 
 Production режимінде әлсіз немесе әдепкі кілттермен backend іске қосылмайды.
